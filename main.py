@@ -1,4 +1,4 @@
-# App/main.py
+# main.py - Fantasy Water Polo Application
 import streamlit as st
 import pandas as pd
 from App.data_manager import data_manager
@@ -10,7 +10,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS for MUCH better appearance
+# Custom CSS for better appearance
 st.markdown("""
 <style>
     .main-header {
@@ -61,6 +61,10 @@ st.markdown("""
     .gk-badge { background-color: #FF6B6B; color: white; }
     .c-badge { background-color: #4ECDC4; color: white; }
     .field-badge { background-color: #45B7D1; color: white; }
+    .team-rating-a { color: #198754; font-weight: bold; }
+    .team-rating-b { color: #0dcaf0; font-weight: bold; }
+    .team-rating-c { color: #fd7e14; font-weight: bold; }
+    .team-rating-d { color: #dc3545; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -68,17 +72,18 @@ st.markdown("""
 st.markdown('<h1 class="main-header">🏆 Fantasy Water Polo Manager</h1>', unsafe_allow_html=True)
 st.markdown("### *LEN Champions League Fantasy Game*")
 
-# Sidebar - UPDATED with match selection
+# Sidebar - UPDATED with all three matches, DEFAULT to "All Matches"
 with st.sidebar:
     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
     st.header("⚙️ Game Settings")
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Match selection
+    # Match selection - DEFAULT TO "ALL MATCHES"
     available_matches = [
+        ("All Matches (Week 1)", "all"),
         ("NBG vs JSP", "nbg_jsp"),
         ("FTC vs Brescia", "ftc_bre"),
-        ("All Matches (Week 1)", "all")
+        ("KOT vs ORA", "kot_ora")
     ]
 
     match_names = [m[0] for m in available_matches]
@@ -86,7 +91,8 @@ with st.sidebar:
 
     selected_match_name = st.selectbox(
         "**Select Match to View:**",
-        match_names
+        match_names,
+        index=0  # Default to "All Matches"
     )
 
     selected_match_id = match_ids[selected_match_name]
@@ -115,16 +121,22 @@ with st.sidebar:
     st.markdown("*Total: 7 players*")
 
     st.markdown("---")
+    # FIXED: Use a session state to trigger refresh without immediate cache clearing
+    if 'refresh_counter' not in st.session_state:
+        st.session_state.refresh_counter = 0
+
     if st.button("🔄 **Refresh Data**", type="primary", use_container_width=True):
+        # Increment refresh counter to force recomputation
+        st.session_state.refresh_counter += 1
         st.rerun()
 
 
 # Main content - UPDATED for multi-match support
 @st.cache_data
-def load_selected_match_data(match_id):
+def load_selected_match_data(match_id, refresh_counter=0):
     """Load data for the selected match"""
     if match_id == "all":
-        # Get all players from all matches
+        # Get all players from all matches - ALREADY GLOBALLY SORTED
         df = data_manager.get_all_players_dataframe()
     else:
         # Get data for specific match
@@ -134,13 +146,13 @@ def load_selected_match_data(match_id):
 
 
 @st.cache_data
-def load_player_pool():
+def load_player_pool(refresh_counter=0):
     """Load all players for team building"""
     return data_manager.get_player_pool()
 
 
-# Get selected match data
-match_data = load_selected_match_data(selected_match_id)
+# Get selected match data - pass refresh counter to force cache recomputation
+match_data = load_selected_match_data(selected_match_id, st.session_state.refresh_counter)
 
 # Get match info for display
 if selected_match_id != "all":
@@ -165,17 +177,19 @@ with col1:
     if not match_data.empty:
         # Format dataframe for display
         if selected_match_id == "all":
-            display_columns = ['match_name', 'jersey', 'player', 'team_code', 'goals', 'assists', 'steals', 'saves',
-                               'fantasy_points']
+            display_columns = ['match_name', 'jersey', 'player', 'team_code', 'goals', 'assists', 'steals', 'blocks',
+                               'saves', 'fantasy_points']
             display_df = match_data[display_columns].copy()
-            display_df.columns = ['Match', '#', 'Player', 'Team', 'Goals', 'Assists', 'Steals', 'Saves',
+            display_df.columns = ['Match', '#', 'Player', 'Team', 'Goals', 'Assists', 'Steals', 'Blocks', 'Saves',
                                   'Fantasy Points']
         else:
-            display_columns = ['jersey', 'player', 'team_code', 'goals', 'assists', 'steals', 'saves', 'fantasy_points']
+            display_columns = ['jersey', 'player', 'team_code', 'goals', 'assists', 'steals', 'blocks', 'saves',
+                               'fantasy_points']
             display_df = match_data[display_columns].copy()
-            display_df.columns = ['#', 'Player', 'Team', 'Goals', 'Assists', 'Steals', 'Saves', 'Fantasy Points']
+            display_df.columns = ['#', 'Player', 'Team', 'Goals', 'Assists', 'Steals', 'Blocks', 'Saves',
+                                  'Fantasy Points']
 
-        # Reset index
+        # Reset index (ALREADY GLOBALLY SORTED)
         display_df = display_df.reset_index(drop=True)
 
         # Display with better formatting
@@ -201,22 +215,24 @@ with col2:
     st.markdown('<div class="section-header">⭐ Top Performers</div>', unsafe_allow_html=True)
 
     if not match_data.empty:
-        # Top 3 players with better styling
+        # Top 3 players with better styling (ALREADY GLOBALLY SORTED)
         top_players = match_data.head(3)
         for idx, player in top_players.iterrows():
-            # Determine team color - expand this based on actual teams
-            if player['team_code'] in ['NBG', 'FTC']:
-                team_color = "#0066CC"  # Blue for NBG/FTC
-            elif player['team_code'] in ['JSP', 'BRE']:
-                team_color = "#CC3333"  # Red for JSP/Brescia
+            # Determine team color
+            if player['team_code'] in ['NBG', 'FTC', 'KOT']:
+                team_color = "#0066CC"
+            elif player['team_code'] in ['JSP', 'BRE', 'ORA']:
+                team_color = "#CC3333"
             else:
-                team_color = "#666666"  # Gray for others
+                team_color = "#666666"
 
             stats_text = f"{player['goals']} goals"
             if player['assists'] > 0:
                 stats_text += f" • {player['assists']} assists"
             if player['steals'] > 0:
                 stats_text += f" • {player['steals']} steals"
+            if player['blocks'] > 0:
+                stats_text += f" • {player['blocks']} blocks"
             if player['saves'] > 0:
                 stats_text += f" • {player['saves']} saves"
 
@@ -268,7 +284,7 @@ with col3:
             for idx, team in team_stats.iterrows():
                 col_a, col_b = st.columns([3, 2])
                 with col_a:
-                    team_name_display = team['team_full'].split()[-1]  # Just show last word
+                    team_name_display = team['team_full'].split()[-1]
                     st.markdown(f"**{team_name_display}**")
                     st.caption(f"Total fantasy points")
                 with col_b:
@@ -311,15 +327,15 @@ with col3:
             for match_name, count in match_counts.items():
                 st.write(f"**{match_name}**: {count} players")
 
-# TEAM BUILDER SECTION - Using ALL players from both matches
+# TEAM BUILDER SECTION - Using ALL players from all matches
 st.markdown("---")
 st.markdown('<div class="section-header">👥 Build Your Weekly Fantasy Team</div>', unsafe_allow_html=True)
 
 st.markdown("### 🎯 Weekly Team Builder")
 st.markdown("Select players from **ANY** match for your weekly fantasy team (1 GK, 1 C, 5 Field Players)")
 
-# Get player pool for team building
-player_pool = load_player_pool()
+# Get player pool for team building - pass refresh counter
+player_pool = load_player_pool(st.session_state.refresh_counter)
 
 if not player_pool.empty:
     # Create columns for the positions
@@ -334,10 +350,16 @@ if not player_pool.empty:
     with col3:
         st.markdown("#### 🏊 Field Players")
 
-    # Filter players by position
-    goalkeepers = player_pool[player_pool['position'] == 'goalkeeper']
-    centers = player_pool[player_pool['position'] == 'center']
-    field_players = player_pool[player_pool['position'] == 'field']
+    # Filter players by position and sort by points (highest first)
+    goalkeepers = player_pool[player_pool['position'] == 'goalkeeper'].sort_values(
+        'fantasy_points', ascending=False
+    )
+    centers = player_pool[player_pool['position'] == 'center'].sort_values(
+        'fantasy_points', ascending=False
+    )
+    field_players = player_pool[player_pool['position'] == 'field'].sort_values(
+        'fantasy_points', ascending=False
+    )
 
     # Create selection boxes with NO defaults
     with col1:
@@ -346,14 +368,14 @@ if not player_pool.empty:
         gk_options["-- Select Goalkeeper --"] = None
 
         for _, row in goalkeepers.iterrows():
-            display_name = f"#{row['jersey']} {row['player'].replace(' (C)', '')} ({row['team_code']}) - {row['match_name']}"
+            display_name = f"#{row['jersey']} {row['player'].replace(' (C)', '')} ({row['team_code']}) - {row['match_name']} - {row['fantasy_points']} pts"
             gk_options[display_name] = row
 
         selected_gk = st.selectbox(
             "Select goalkeeper:",
             options=list(gk_options.keys()),
             index=0,  # Default to empty option
-            key="weekly_gk",
+            key=f"weekly_gk_{st.session_state.refresh_counter}",
             label_visibility="collapsed"
         )
 
@@ -361,9 +383,9 @@ if not player_pool.empty:
             selected_gk] is not None:
             gk_data = gk_options[selected_gk]
             # Determine team color
-            if gk_data['team_code'] in ['NBG', 'FTC']:
+            if gk_data['team_code'] in ['NBG', 'FTC', 'KOT']:
                 team_color = "#0066CC"
-            elif gk_data['team_code'] in ['JSP', 'BRE']:
+            elif gk_data['team_code'] in ['JSP', 'BRE', 'ORA']:
                 team_color = "#CC3333"
             else:
                 team_color = "#666666"
@@ -398,14 +420,14 @@ if not player_pool.empty:
         center_options["-- Select Center --"] = None
 
         for _, row in centers.iterrows():
-            display_name = f"#{row['jersey']} {row['player'].replace(' (C)', '')} ({row['team_code']}) - {row['match_name']}"
+            display_name = f"#{row['jersey']} {row['player'].replace(' (C)', '')} ({row['team_code']}) - {row['match_name']} - {row['fantasy_points']} pts"
             center_options[display_name] = row
 
         selected_center = st.selectbox(
             "Select center:",
             options=list(center_options.keys()),
             index=0,  # Default to empty option
-            key="weekly_center",
+            key=f"weekly_center_{st.session_state.refresh_counter}",
             label_visibility="collapsed"
         )
 
@@ -413,9 +435,9 @@ if not player_pool.empty:
             selected_center] is not None:
             center_data = center_options[selected_center]
             # Determine team color
-            if center_data['team_code'] in ['NBG', 'FTC']:
+            if center_data['team_code'] in ['NBG', 'FTC', 'KOT']:
                 team_color = "#0066CC"
-            elif center_data['team_code'] in ['JSP', 'BRE']:
+            elif center_data['team_code'] in ['JSP', 'BRE', 'ORA']:
                 team_color = "#CC3333"
             else:
                 team_color = "#666666"
@@ -450,7 +472,7 @@ if not player_pool.empty:
 
         field_options = {}
         for _, row in field_players.iterrows():
-            display_name = f"#{row['jersey']} {row['player'].replace(' (C)', '')} ({row['team_code']}) - {row['match_name']}"
+            display_name = f"#{row['jersey']} {row['player'].replace(' (C)', '')} ({row['team_code']}) - {row['match_name']} - {row['fantasy_points']} pts"
             field_options[display_name] = row
 
         selected_fields = st.multiselect(
@@ -458,7 +480,7 @@ if not player_pool.empty:
             options=list(field_options.keys()),
             default=[],  # Empty default
             max_selections=5,
-            key="weekly_field",
+            key=f"weekly_field_{st.session_state.refresh_counter}",
             label_visibility="collapsed"
         )
 
@@ -467,9 +489,9 @@ if not player_pool.empty:
             for i, field_name in enumerate(selected_fields):
                 field_data = field_options[field_name]
                 # Determine team color
-                if field_data['team_code'] in ['NBG', 'FTC']:
+                if field_data['team_code'] in ['NBG', 'FTC', 'KOT']:
                     team_color = "#0066CC"
-                elif field_data['team_code'] in ['JSP', 'BRE']:
+                elif field_data['team_code'] in ['JSP', 'BRE', 'ORA']:
                     team_color = "#CC3333"
                 else:
                     team_color = "#666666"
@@ -490,7 +512,7 @@ if not player_pool.empty:
                             {field_data['fantasy_points']} pts
                         </div>
                         <div style="color: #555; font-size: 0.75rem;">
-                            {field_data['goals']}G {field_data['assists']}A {field_data['steals']}ST
+                            {field_data['goals']}G {field_data['assists']}A {field_data['steals']}ST {field_data['blocks']}BLK
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -547,6 +569,7 @@ if not player_pool.empty:
                 'goals': row['goals'],
                 'assists': row['assists'],
                 'steals': row['steals'],
+                'blocks': row['blocks'],
                 'fantasy_points': row['fantasy_points'],
                 'position': row['position'],
                 'match_name': row['match_name']
@@ -555,32 +578,59 @@ if not player_pool.empty:
             total_points = selected_df['fantasy_points'].sum()
             avg_points = total_points / 7
 
-            # Calculate team rating
-            max_possible = 140  # Theoretical max with perfect picks
-            min_possible = 35  # Theoretical min with worst picks
-            team_percentage = ((total_points - min_possible) / (max_possible - min_possible)) * 100
+            # DYNAMIC TEAM RATING SYSTEM - Based on actual data
+            # Get top possible team: best GK + best C + 5 best field players
+            top_gk = goalkeepers.iloc[0]['fantasy_points'] if not goalkeepers.empty else 0
+            top_center = centers.iloc[0]['fantasy_points'] if not centers.empty else 0
+            top_fields = field_players.head(5)['fantasy_points'].sum() if len(field_players) >= 5 else 0
 
-            if team_percentage >= 80:
+            max_possible = top_gk + top_center + top_fields
+
+            # Get worst possible team: worst GK + worst C + 5 worst field players
+            worst_gk = goalkeepers.iloc[-1]['fantasy_points'] if not goalkeepers.empty else 0
+            worst_center = centers.iloc[-1]['fantasy_points'] if not centers.empty else 0
+            worst_fields = field_players.tail(5)['fantasy_points'].sum() if len(field_players) >= 5 else 0
+            min_possible = worst_gk + worst_center + worst_fields
+
+            # Calculate percentage of possible range
+            if max_possible > min_possible:
+                team_percentage = ((total_points - min_possible) / (max_possible - min_possible)) * 100
+            else:
+                team_percentage = 50  # Default if all players have same points
+
+            # Improved rating scale
+            if team_percentage >= 90:
                 rating = "A+"
-                rating_color = "#198754"  # Green
-            elif team_percentage >= 65:
+                rating_color = "#198754"
+                rating_class = "team-rating-a"
+            elif team_percentage >= 80:
                 rating = "A"
-                rating_color = "#20c997"  # Teal
-            elif team_percentage >= 50:
+                rating_color = "#20c997"
+                rating_class = "team-rating-a"
+            elif team_percentage >= 70:
                 rating = "B+"
-                rating_color = "#0dcaf0"  # Cyan
-            elif team_percentage >= 35:
+                rating_color = "#0dcaf0"
+                rating_class = "team-rating-b"
+            elif team_percentage >= 60:
                 rating = "B"
-                rating_color = "#6f42c1"  # Purple
-            elif team_percentage >= 20:
+                rating_color = "#6f42c1"
+                rating_class = "team-rating-b"
+            elif team_percentage >= 50:
                 rating = "C+"
-                rating_color = "#fd7e14"  # Orange
-            elif team_percentage >= 10:
+                rating_color = "#fd7e14"
+                rating_class = "team-rating-c"
+            elif team_percentage >= 40:
                 rating = "C"
-                rating_color = "#dc3545"  # Red
+                rating_color = "#ffc107"
+                rating_class = "team-rating-c"
+            elif team_percentage >= 30:
+                rating = "D+"
+                rating_color = "#dc3545"
+                rating_class = "team-rating-d"
             else:
                 rating = "D"
-                rating_color = "#6c757d"  # Gray
+                rating_color = "#6c757d"
+                rating_class = "team-rating-d"
 
             st.markdown("---")
             st.markdown("### 📊 Team Summary")
@@ -593,14 +643,14 @@ if not player_pool.empty:
             with col3:
                 st.markdown(f"""
                 <div style="text-align: center;">
-                    <div style="font-size: 1.2rem; font-weight: bold; color: {rating_color};">
+                    <div class="{rating_class}" style="font-size: 1.5rem; font-weight: bold;">
                         {rating}
                     </div>
                     <div style="font-size: 0.8rem; color: #666;">
                         Team Rating
                     </div>
                     <div style="font-size: 0.7rem; color: #999;">
-                        ({team_percentage:.1f}% of max)
+                        Top possible: {max_possible} pts
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -655,19 +705,15 @@ else:
 # Footer with next steps
 st.markdown("---")
 st.success("""
-### ✅ **Fantasy Water Polo - Multi-Match Ready!**
+### ✅ **Fantasy Water Polo - Three Matches Ready!**
 
 **Features Complete:**
-- **Two matches** (NBG vs JSP, FTC vs Brescia) loaded
-- **Match selector** to view individual or all matches
+- **Three matches** (NBG vs JSP, FTC vs Brescia, KOT vs ORA) loaded
+- **Global ranking** for "All Matches" view
+- **Blocks displayed** in all player stats
+- **Sorted dropdowns** by fantasy points (highest first)
 - **Weekly team builder** mixing players from different matches
-- **Improved team rating** system
+- **Dynamic team rating** system based on actual player data
 
-**Ready for Next Features:**
-1. **Add more weeks** as matches happen
-2. **User authentication** to save teams
-3. **Weekly leaderboards** comparing teams
-4. **Auto-scraping** from LEN website
-
-**Try it out:** Build a team mixing players from both matches for maximum points!
+**Try it out:** Build a team mixing players from all three matches for maximum points!
 """)

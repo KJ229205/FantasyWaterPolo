@@ -9,9 +9,10 @@ class MatchDataManager:
     def __init__(self):
         self.all_matches = {}
         self.load_default_matches()
+        print(f"DEBUG: Initialized with {len(self.all_matches)} matches")
 
     def load_default_matches(self):
-        """Load the two matches we have data for"""
+        """Load the three matches we have data for"""
         # Match 1: NBG vs JSP (already in main.py)
         match1_players = [
             # NBG Players - EXACT from website (with (C) for centers)
@@ -80,7 +81,42 @@ class MatchDataManager:
             ['14', 'BALZARINI Alessandro', 'BRE', 1, 0, 0, 0, 0, 'field', 'AN Brescia'],
         ]
 
-        # Store matches
+        # Match 3: KOT vs ORA (from your HTML) - FIXED: Only center positions have (C)
+        match3_players = [
+            # KOT Players
+            ['1', 'RISTICEVIC Dimitrije', 'KOT', 0, 0, 1, 0, 6, 'goalkeeper', 'VPK Primorac Kotor'],
+            ['2', 'BRGULJAN Drasko (C)', 'KOT', 1, 1, 2, 0, 0, 'center', 'VPK Primorac Kotor'],
+            ['3', 'CETKOVIC Savo', 'KOT', 3, 1, 0, 0, 0, 'field', 'VPK Primorac Kotor'],
+            ['4', 'INABA Yusuke', 'KOT', 0, 1, 3, 0, 0, 'field', 'VPK Primorac Kotor'],
+            ['5', 'MRSIC Marko', 'KOT', 4, 0, 1, 0, 0, 'field', 'VPK Primorac Kotor'],
+            ['6', 'MURISIC Luka', 'KOT', 1, 1, 1, 0, 0, 'field', 'VPK Primorac Kotor'],
+            ['7', 'VIDOVIC Stefan', 'KOT', 1, 2, 0, 0, 0, 'field', 'VPK Primorac Kotor'],
+            ['8', 'VUCKOVIC Balsa', 'KOT', 3, 2, 2, 0, 0, 'field', 'VPK Primorac Kotor'],
+            ['9', 'VICO Nemanja', 'KOT', 1, 0, 0, 0, 0, 'field', 'VPK Primorac Kotor'],
+            ['10', 'BRKIC Nikola', 'KOT', 0, 0, 0, 0, 0, 'field', 'VPK Primorac Kotor'],
+            ['11', 'CETKOVIC Petar', 'KOT', 0, 0, 0, 0, 0, 'field', 'VPK Primorac Kotor'],
+            ['12', 'STANOJEVIC Dordije', 'KOT', 1, 1, 2, 0, 0, 'field', 'VPK Primorac Kotor'],
+            ['13', 'PEJOVIC Marko', 'KOT', 0, 0, 0, 0, 0, 'goalkeeper', 'VPK Primorac Kotor'],
+            ['14', 'PEROV Tim', 'KOT', 0, 0, 0, 0, 0, 'field', 'VPK Primorac Kotor'],
+
+            # ORA Players - FIXED: Only one center position
+            ['1', 'DOBOZANOV Lazar', 'ORA', 0, 0, 1, 0, 10, 'goalkeeper', 'CSM Oradea'],
+            ['2', 'BELENYESI David', 'ORA', 0, 1, 1, 0, 0, 'field', 'CSM Oradea'],
+            ['3', 'NEGREAN Tiberiu (C)', 'ORA', 0, 0, 1, 2, 0, 'center', 'CSM Oradea'],
+            ['4', 'LUNCAN Darian', 'ORA', 0, 0, 0, 0, 0, 'field', 'CSM Oradea'],
+            ['5', 'OLTEAN Sebastian', 'ORA', 0, 0, 0, 0, 0, 'field', 'CSM Oradea'],
+            ['6', 'ILISIE Flavius Nichita', 'ORA', 1, 1, 0, 0, 0, 'field', 'CSM Oradea'],
+            ['7', 'GUSAROV Ivan', 'ORA', 0, 1, 0, 0, 0, 'field', 'CSM Oradea'],
+            ['8', 'GARDASEVIC Filip', 'ORA', 5, 1, 0, 2, 0, 'field', 'CSM Oradea'],
+            ['9', 'REMES Bogdan', 'ORA', 0, 0, 0, 0, 0, 'field', 'CSM Oradea'],
+            ['10', 'VANCSIK Levente', 'ORA', 2, 0, 1, 0, 0, 'field', 'CSM Oradea'],  # REMOVED (C) from position
+            ['11', 'CZENK Ferenc Istvan', 'ORA', 1, 1, 0, 0, 0, 'field', 'CSM Oradea'],
+            ['12', 'VELKIC Petar', 'ORA', 2, 0, 0, 0, 0, 'field', 'CSM Oradea'],
+            ['13', 'GAVRIS Raul Ionut', 'ORA', 0, 0, 0, 0, 0, 'goalkeeper', 'CSM Oradea'],
+            ['14', 'BINDEA Raul Alexandru', 'ORA', 0, 0, 1, 0, 0, 'field', 'CSM Oradea'],
+        ]
+
+        # Store all matches
         self.all_matches = {
             'nbg_jsp': {
                 'id': 'nbg_jsp',
@@ -97,8 +133,19 @@ class MatchDataManager:
                 'score': '13-16',
                 'teams': ['FTC Telekom Waterpolo', 'AN Brescia'],
                 'players': match2_players
+            },
+            'kot_ora': {
+                'id': 'kot_ora',
+                'name': 'KOT vs ORA',
+                'date': '2025-12-02',
+                'score': '15-11',
+                'teams': ['VPK Primorac Kotor', 'CSM Oradea'],
+                'players': match3_players
             }
         }
+
+        print(f"DEBUG: Loaded matches - {list(self.all_matches.keys())}")
+        print(f"DEBUG: KOT vs ORA has {len(match3_players)} players")
 
     def get_match_ids(self):
         """Return list of available match IDs"""
@@ -113,6 +160,7 @@ class MatchDataManager:
     def get_match_dataframe(self, match_id):
         """Get match data as pandas DataFrame with fantasy points calculated"""
         if match_id not in self.all_matches:
+            print(f"ERROR: Match ID '{match_id}' not found")
             return pd.DataFrame()
 
         match = self.all_matches[match_id]
@@ -135,27 +183,60 @@ class MatchDataManager:
         # Sort by points
         df = df.sort_values(['fantasy_points', 'goals', 'assists'], ascending=[False, False, False])
 
+        print(f"DEBUG: Loaded match '{match_id}' with {len(df)} players")
+
         return df
 
     def get_all_players_dataframe(self):
-        """Get all players from all matches combined"""
+        """Get all players from all matches combined - SORTED GLOBALLY"""
+        print("DEBUG: Getting ALL players dataframe")
         all_dfs = []
         for match_id in self.get_match_ids():
-            df = self.get_match_dataframe(match_id)
+            match = self.all_matches[match_id]
+            players = match['players']
+
+            # Create DataFrame for this match
+            df = pd.DataFrame(players, columns=[
+                'jersey', 'player', 'team_code', 'goals', 'assists', 'steals',
+                'blocks', 'saves', 'position', 'team_full'
+            ])
+
+            # Calculate fantasy points
+            df['fantasy_points'] = (
+                    df['goals'] * 5 +
+                    df['assists'] * 3 +
+                    df['steals'] * 2 +
+                    df['blocks'] * 2 +
+                    df['saves'] * 2
+            )
+
             df['match_id'] = match_id
-            df['match_name'] = self.all_matches[match_id]['name']
+            df['match_name'] = match['name']
             all_dfs.append(df)
+            print(f"DEBUG: Added {len(df)} players from {match['name']}")
 
         if all_dfs:
-            return pd.concat(all_dfs, ignore_index=True)
+            combined_df = pd.concat(all_dfs, ignore_index=True)
+            # Sort ALL players by fantasy points GLOBALLY
+            combined_df = combined_df.sort_values(
+                ['fantasy_points', 'goals', 'assists', 'steals', 'saves'],
+                ascending=[False, False, False, False, False]
+            ).reset_index(drop=True)
+            print(f"DEBUG: Combined total players: {len(combined_df)}")
+            print(f"DEBUG: Matches in combined: {combined_df['match_name'].unique()}")
+            return combined_df
+        print("DEBUG: No dataframes to combine")
         return pd.DataFrame()
 
     def get_player_pool(self):
         """Get combined player pool from all matches for team building"""
+        print("DEBUG: Getting player pool")
         df = self.get_all_players_dataframe()
-
-        # For team building, we want unique players (by name and team)
-        # In reality, same player could play in multiple matches, but for now we'll treat as unique
+        if not df.empty:
+            print(f"DEBUG: Player pool has {len(df)} players")
+            print(f"DEBUG: Matches in pool: {df['match_name'].unique()}")
+        else:
+            print("DEBUG: Player pool is empty!")
         return df
 
     def calculate_weekly_totals(self, selected_players):
