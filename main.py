@@ -1,7 +1,7 @@
 # App/main.py
 import streamlit as st
 import pandas as pd
-from data_manager import data_manager
+from App.data_manager import data_manager
 
 # Page configuration
 st.set_page_config(
