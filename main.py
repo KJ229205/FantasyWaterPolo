@@ -1,270 +1,156 @@
-# main.py - Fantasy Water Polo Application
+# main.py - Main Application Entry Point
 import streamlit as st
 import pandas as pd
+import time
+CACHE_VERSION = int(time.time())
+
+st.cache_data.clear()
+
 from App.data_manager import data_manager
+from App.league_manager import league_manager
+from App.lineup_manager import lineup_manager
+from App.ui_components import (
+    render_player_card, render_team_summary,
+    create_position_dropdown, render_selected_player
+)
+from App.config import CSS_STYLES, AVAILABLE_MATCHES, SCORING_RULES
+from App import league_ui
 
 # Page configuration
-st.set_page_config(
-    page_title="Fantasy Water Polo",
-    page_icon="🏊",
-    layout="wide"
-)
+st.set_page_config(page_title="Fantasy Water Polo", page_icon="🏊", layout="wide")
+st.markdown(CSS_STYLES, unsafe_allow_html=True)
 
-# Custom CSS for better appearance
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.8rem;
-        color: #0066CC;
-        text-align: center;
-        margin-bottom: 1rem;
-        font-weight: bold;
-    }
-    .match-card {
-        background-color: #f8f9fa;
-        padding: 1.5rem;
-        border-radius: 10px;
-        margin: 1rem 0;
-        border-left: 5px solid #0066CC;
-    }
-    .player-card {
-        background-color: white;
-        padding: 0.8rem;
-        margin: 0.3rem 0;
-        border-radius: 8px;
-        border: 1px solid #e0e0e0;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-    .section-header {
-        font-size: 1.5rem;
-        color: #333;
-        margin-top: 1.5rem;
-        margin-bottom: 1rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 2px solid #0066CC;
-    }
-    .metric-card {
-        background: white;
-        padding: 1rem;
-        border-radius: 8px;
-        border: 1px solid #e0e0e0;
-        text-align: center;
-    }
-    .position-badge {
-        display: inline-block;
-        padding: 0.2rem 0.6rem;
-        border-radius: 12px;
-        font-size: 0.8rem;
-        font-weight: bold;
-        margin-right: 0.3rem;
-    }
-    .gk-badge { background-color: #FF6B6B; color: white; }
-    .c-badge { background-color: #4ECDC4; color: white; }
-    .field-badge { background-color: #45B7D1; color: white; }
-    .team-rating-a { color: #198754; font-weight: bold; }
-    .team-rating-b { color: #0dcaf0; font-weight: bold; }
-    .team-rating-c { color: #fd7e14; font-weight: bold; }
-    .team-rating-d { color: #dc3545; font-weight: bold; }
-</style>
-""", unsafe_allow_html=True)
-
-# Title with emoji
+# Title
 st.markdown('<h1 class="main-header">🏆 Fantasy Water Polo Manager</h1>', unsafe_allow_html=True)
 st.markdown("### *LEN Champions League Fantasy Game*")
 
-# Sidebar - UPDATED with all three matches, DEFAULT to "All Matches"
+# Sidebar
 with st.sidebar:
     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
     st.header("⚙️ Game Settings")
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Match selection - DEFAULT TO "ALL MATCHES"
-    available_matches = [
-        ("All Matches (Week 1)", "all"),
-        ("NBG vs JSP", "nbg_jsp"),
-        ("FTC vs Brescia", "ftc_bre"),
-        ("KOT vs ORA", "kot_ora")
-    ]
-
-    match_names = [m[0] for m in available_matches]
-    match_ids = {m[0]: m[1] for m in available_matches}
-
-    selected_match_name = st.selectbox(
-        "**Select Match to View:**",
-        match_names,
-        index=0  # Default to "All Matches"
-    )
-
+    # Match selection
+    match_names = [m[0] for m in AVAILABLE_MATCHES]
+    match_ids = {m[0]: m[1] for m in AVAILABLE_MATCHES}
+    selected_match_name = st.selectbox("**Select Match to View:**", match_names, index=0)
     selected_match_id = match_ids[selected_match_name]
 
     st.markdown("---")
     st.markdown("### 📊 Scoring Rules")
-
-    scoring_rules = {
-        "Goal": 5,
-        "Assist": 3,
-        "Steal": 2,
-        "Block": 2,
-        "Save": 2,
-        "Exclusion Drawn": 1
-    }
-
-    for rule, points in scoring_rules.items():
+    for rule, points in SCORING_RULES.items():
         st.markdown(f"**{rule}**: {points} pts")
 
     st.markdown("---")
     st.markdown("### 👥 Team Composition")
-    st.markdown("**Required Positions:**")
-    st.markdown("• 1 Goalkeeper (GK)")
-    st.markdown("• 1 Center (C)")
-    st.markdown("• 5 Field Players")
-    st.markdown("*Total: 7 players*")
+    st.markdown(
+        "• 1 Goalkeeper (GK)<br>• 1 Center (C)<br>• 5 Field Players<br>• 2 Bench Players (any position)<br>*Total: 9 players*",
+        unsafe_allow_html=True)
 
     st.markdown("---")
-    # FIXED: Use a session state to trigger refresh without immediate cache clearing
+    st.markdown("### 📈 Current Week")
+    current_week = st.number_input("Set Current Week:", min_value=1, max_value=20,
+                                   value=league_manager.matchup_manager.current_week)
+    if current_week != league_manager.matchup_manager.current_week:
+        league_manager.matchup_manager.current_week = current_week
+        league_manager.save_to_session()
+        st.success(f"Week updated to {current_week}")
+        st.rerun()
+
+    st.markdown("---")
     if 'refresh_counter' not in st.session_state:
         st.session_state.refresh_counter = 0
-
     if st.button("🔄 **Refresh Data**", type="primary", use_container_width=True):
-        # Increment refresh counter to force recomputation
         st.session_state.refresh_counter += 1
         st.rerun()
 
 
-# Main content - UPDATED for multi-match support
 @st.cache_data
 def load_selected_match_data(match_id, refresh_counter=0):
-    """Load data for the selected match"""
+    # Add cache version to ensure fresh data on restart
+    _ = CACHE_VERSION
     if match_id == "all":
-        # Get all players from all matches - ALREADY GLOBALLY SORTED
-        df = data_manager.get_all_players_dataframe()
+        return data_manager.get_all_players_dataframe()
     else:
-        # Get data for specific match
-        df = data_manager.get_match_dataframe(match_id)
-
-    return df
-
+        return data_manager.get_match_dataframe(match_id)
 
 @st.cache_data
 def load_player_pool(refresh_counter=0):
-    """Load all players for team building"""
+    _ = CACHE_VERSION
     return data_manager.get_player_pool()
 
-
-# Get selected match data - pass refresh counter to force cache recomputation
+# Load data
 match_data = load_selected_match_data(selected_match_id, st.session_state.refresh_counter)
+player_pool = load_player_pool(st.session_state.refresh_counter)
 
-# Get match info for display
+
+# Display match info
 if selected_match_id != "all":
     match_info = data_manager.get_match_info(selected_match_id)
-    match_title = match_info['name']
-    match_date = match_info['date']
-    match_score = match_info['score']
-    team1, team2 = match_info['teams']
-
-    st.markdown(f"## 📈 Match Analysis: {match_title}")
-    st.markdown(f"*{match_date} • Final Score: {team1} {match_score} {team2}*")
+    st.markdown(f"## 📈 Match Analysis: {match_info['name']}")
+    st.markdown(
+        f"*{match_info['date']} • Final Score: {match_info['teams'][0]} {match_info['score']} {match_info['teams'][1]}*")
 else:
     st.markdown("## 📈 Weekly Summary: All Matches")
-    st.markdown("*Week 1 - December 2, 2025*")
+    st.markdown(f"*Week {current_week} - All Available Matches*")
 
-# Create three columns for layout
+# Layout columns
 col1, col2, col3 = st.columns([2, 1, 1])
 
+# Leaderboard
 with col1:
     st.markdown('<div class="section-header">🏆 Player Leaderboard</div>', unsafe_allow_html=True)
-
     if not match_data.empty:
-        # Format dataframe for display
         if selected_match_id == "all":
-            display_columns = ['match_name', 'jersey', 'player', 'team_code', 'goals', 'assists', 'steals', 'blocks',
-                               'saves', 'fantasy_points']
+            # For "All Matches" view
+            display_columns = ['player', 'fantasy_points', 'goals', 'assists', 'steals', 'blocks',
+                               'saves', 'team_code', 'match_name']
             display_df = match_data[display_columns].copy()
-            display_df.columns = ['Match', '#', 'Player', 'Team', 'Goals', 'Assists', 'Steals', 'Blocks', 'Saves',
-                                  'Fantasy Points']
+            display_df.columns = ['Player', 'Points', 'G', 'A', 'ST', 'BL', 'SV', 'Team', 'Match']
+
+            # Reorder columns for better readability
+            display_df = display_df[['Player', 'Points', 'G', 'A', 'ST', 'BL', 'SV', 'Team', 'Match']]
         else:
-            display_columns = ['jersey', 'player', 'team_code', 'goals', 'assists', 'steals', 'blocks', 'saves',
-                               'fantasy_points']
+            # For single match view
+            display_columns = ['player', 'fantasy_points', 'goals', 'assists', 'steals', 'blocks',
+                               'saves', 'team_code']
             display_df = match_data[display_columns].copy()
-            display_df.columns = ['#', 'Player', 'Team', 'Goals', 'Assists', 'Steals', 'Blocks', 'Saves',
-                                  'Fantasy Points']
+            display_df.columns = ['Player', 'Points', 'G', 'A', 'ST', 'BL', 'SV', 'Team']
 
-        # Reset index (ALREADY GLOBALLY SORTED)
-        display_df = display_df.reset_index(drop=True)
+            # Reorder columns for better readability
+            display_df = display_df[['Player', 'Points', 'G', 'A', 'ST', 'BL', 'SV', 'Team']]
 
-        # Display with better formatting
         st.dataframe(
-            display_df,
+            display_df.reset_index(drop=True),
             use_container_width=True,
             height=500,
             hide_index=True,
             column_config={
-                "#": st.column_config.TextColumn(width="small"),
                 "Player": st.column_config.TextColumn(width="large"),
+                "Points": st.column_config.NumberColumn(format="%d", width="small"),
+                "G": st.column_config.NumberColumn(width="small"),
+                "A": st.column_config.NumberColumn(width="small"),
+                "ST": st.column_config.NumberColumn(width="small"),
+                "BL": st.column_config.NumberColumn(width="small"),
+                "SV": st.column_config.NumberColumn(width="small"),
                 "Team": st.column_config.TextColumn(width="small"),
-                "Fantasy Points": st.column_config.NumberColumn(
-                    format="%d pts",
-                    width="medium"
-                )
+                "Match": st.column_config.TextColumn(width="medium")
             }
         )
     else:
         st.info("No match data available")
 
+# Top Performers
 with col2:
     st.markdown('<div class="section-header">⭐ Top Performers</div>', unsafe_allow_html=True)
-
     if not match_data.empty:
-        # Top 3 players with better styling (ALREADY GLOBALLY SORTED)
         top_players = match_data.head(3)
-        for idx, player in top_players.iterrows():
-            # Determine team color
-            if player['team_code'] in ['NBG', 'FTC', 'KOT']:
-                team_color = "#0066CC"
-            elif player['team_code'] in ['JSP', 'BRE', 'ORA']:
-                team_color = "#CC3333"
-            else:
-                team_color = "#666666"
+        for _, player in top_players.iterrows():
+            st.markdown(render_player_card(player), unsafe_allow_html=True)
 
-            stats_text = f"{player['goals']} goals"
-            if player['assists'] > 0:
-                stats_text += f" • {player['assists']} assists"
-            if player['steals'] > 0:
-                stats_text += f" • {player['steals']} steals"
-            if player['blocks'] > 0:
-                stats_text += f" • {player['blocks']} blocks"
-            if player['saves'] > 0:
-                stats_text += f" • {player['saves']} saves"
-
-            # Position badge
-            position_badge = ""
-            if player['position'] == 'goalkeeper':
-                position_badge = '<span class="position-badge gk-badge">GK</span>'
-            elif player['position'] == 'center':
-                position_badge = '<span class="position-badge c-badge">C</span>'
-            else:
-                position_badge = '<span class="position-badge field-badge">F</span>'
-
-            st.markdown(f"""
-            <div class="player-card">
-                <div style="color: {team_color}; font-weight: bold; font-size: 1.1rem;">
-                    #{player['jersey']} {player['player']} {position_badge}
-                </div>
-                <div style="color: #666; font-size: 0.9rem;">
-                    {player['team_full']}
-                </div>
-                <div style="color: #2E7D32; font-weight: bold; font-size: 1.2rem; margin-top: 0.5rem;">
-                    {player['fantasy_points']} fantasy points
-                </div>
-                <div style="color: #555; font-size: 0.85rem; margin-top: 0.3rem;">
-                    {stats_text}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
+# Match Summary with DETAILED STATS
 with col3:
     st.markdown('<div class="section-header">📊 Match Summary</div>', unsafe_allow_html=True)
-
     if not match_data.empty and selected_match_id != "all":
         # Calculate team stats for the specific match
         team_stats = match_data.groupby(['team_code', 'team_full']).agg({
@@ -272,6 +158,7 @@ with col3:
             'goals': 'sum',
             'assists': 'sum',
             'steals': 'sum',
+            'blocks': 'sum',
             'saves': 'sum'
         }).reset_index()
 
@@ -294,7 +181,6 @@ with col3:
                     else:
                         delta_value = f"-{goal_differential}"
                         delta_color = "inverse"
-
                     st.metric(
                         label="Total Points",
                         value=f"{team['fantasy_points']}",
@@ -303,15 +189,18 @@ with col3:
                         label_visibility="collapsed"
                     )
 
-                # Mini stats
+                # MINI STATS EXPANDER
                 with st.expander(f"View {team_name_display} details"):
                     cols = st.columns(2)
                     cols[0].metric("Goals", team['goals'])
                     cols[1].metric("Assists", team['assists'])
                     cols = st.columns(2)
                     cols[0].metric("Steals", team['steals'])
+                    cols[1].metric("Blocks", team.get('blocks', 0))
                     if team['saves'] > 0:
-                        cols[1].metric("Saves", team['saves'])
+                        cols = st.columns(2)
+                        cols[0].metric("Saves", team['saves'])
+
     elif selected_match_id == "all":
         # Weekly summary for all matches
         total_players = len(match_data)
@@ -327,393 +216,289 @@ with col3:
             for match_name, count in match_counts.items():
                 st.write(f"**{match_name}**: {count} players")
 
-# TEAM BUILDER SECTION - Using ALL players from all matches
+# Team Builder Section
 st.markdown("---")
-st.markdown('<div class="section-header">👥 Build Your Weekly Fantasy Team</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-header">👥 Team Builder</div>', unsafe_allow_html=True)
 
-st.markdown("### 🎯 Weekly Team Builder")
-st.markdown("Select players from **ANY** match for your weekly fantasy team (1 GK, 1 C, 5 Field Players)")
-
-# Get player pool for team building - pass refresh counter
-player_pool = load_player_pool(st.session_state.refresh_counter)
-
-if not player_pool.empty:
-    # Create columns for the positions
-    col1, col2, col3 = st.columns(3)
-
+# First, let users add custom teams
+with st.expander("➕ Add Custom Team", expanded=False):
+    col1, col2 = st.columns([2, 1])
     with col1:
-        st.markdown("#### 🥅 Goalkeeper")
-
+        custom_manager = st.text_input("Manager Name", placeholder="e.g., Joe Smith", key="custom_manager_input")
+        custom_team = st.text_input("Team Name", placeholder="e.g., Aqua Warriors", key="custom_team_input")
     with col2:
-        st.markdown("#### 🎯 Center")
-
-    with col3:
-        st.markdown("#### 🏊 Field Players")
-
-    # Filter players by position and sort by points (highest first)
-    goalkeepers = player_pool[player_pool['position'] == 'goalkeeper'].sort_values(
-        'fantasy_points', ascending=False
-    )
-    centers = player_pool[player_pool['position'] == 'center'].sort_values(
-        'fantasy_points', ascending=False
-    )
-    field_players = player_pool[player_pool['position'] == 'field'].sort_values(
-        'fantasy_points', ascending=False
-    )
-
-    # Create selection boxes with NO defaults
-    with col1:
-        gk_options = {}
-        # Add empty option first
-        gk_options["-- Select Goalkeeper --"] = None
-
-        for _, row in goalkeepers.iterrows():
-            display_name = f"#{row['jersey']} {row['player'].replace(' (C)', '')} ({row['team_code']}) - {row['match_name']} - {row['fantasy_points']} pts"
-            gk_options[display_name] = row
-
-        selected_gk = st.selectbox(
-            "Select goalkeeper:",
-            options=list(gk_options.keys()),
-            index=0,  # Default to empty option
-            key=f"weekly_gk_{st.session_state.refresh_counter}",
-            label_visibility="collapsed"
-        )
-
-        if selected_gk != "-- Select Goalkeeper --" and selected_gk in gk_options and gk_options[
-            selected_gk] is not None:
-            gk_data = gk_options[selected_gk]
-            # Determine team color
-            if gk_data['team_code'] in ['NBG', 'FTC', 'KOT']:
-                team_color = "#0066CC"
-            elif gk_data['team_code'] in ['JSP', 'BRE', 'ORA']:
-                team_color = "#CC3333"
-            else:
-                team_color = "#666666"
-
-            st.markdown(f"""
-            <div style="background-color: white; padding: 1rem; border-radius: 8px; border-left: 4px solid {team_color}; margin-top: 0.5rem;">
-                <div style="font-weight: bold; color: {team_color};">
-                    #{gk_data['jersey']} {gk_data['player'].replace(' (C)', '')}
-                </div>
-                <div style="color: #666; font-size: 0.9rem;">
-                    {gk_data['team_code']} • {gk_data['match_name']}
-                </div>
-                <div style="color: #2E7D32; font-weight: bold; margin-top: 0.5rem;">
-                    {gk_data['fantasy_points']} pts
-                </div>
-                <div style="color: #555; font-size: 0.85rem;">
-                    {gk_data['saves']} saves
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown("""
-            <div style="background-color: #f8f9fa; padding: 1rem; border-radius: 8px; border: 2px dashed #dee2e6; margin-top: 0.5rem; text-align: center; color: #6c757d;">
-                <div style="font-size: 2rem;">🥅</div>
-                <div>Select a goalkeeper</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-    with col2:
-        center_options = {}
-        # Add empty option first
-        center_options["-- Select Center --"] = None
-
-        for _, row in centers.iterrows():
-            display_name = f"#{row['jersey']} {row['player'].replace(' (C)', '')} ({row['team_code']}) - {row['match_name']} - {row['fantasy_points']} pts"
-            center_options[display_name] = row
-
-        selected_center = st.selectbox(
-            "Select center:",
-            options=list(center_options.keys()),
-            index=0,  # Default to empty option
-            key=f"weekly_center_{st.session_state.refresh_counter}",
-            label_visibility="collapsed"
-        )
-
-        if selected_center != "-- Select Center --" and selected_center in center_options and center_options[
-            selected_center] is not None:
-            center_data = center_options[selected_center]
-            # Determine team color
-            if center_data['team_code'] in ['NBG', 'FTC', 'KOT']:
-                team_color = "#0066CC"
-            elif center_data['team_code'] in ['JSP', 'BRE', 'ORA']:
-                team_color = "#CC3333"
-            else:
-                team_color = "#666666"
-
-            st.markdown(f"""
-            <div style="background-color: white; padding: 1rem; border-radius: 8px; border-left: 4px solid {team_color}; margin-top: 0.5rem;">
-                <div style="font-weight: bold; color: {team_color};">
-                    #{center_data['jersey']} {center_data['player'].replace(' (C)', '')}
-                </div>
-                <div style="color: #666; font-size: 0.9rem;">
-                    {center_data['team_code']} • {center_data['match_name']}
-                </div>
-                <div style="color: #2E7D32; font-weight: bold; margin-top: 0.5rem;">
-                    {center_data['fantasy_points']} pts
-                </div>
-                <div style="color: #555; font-size: 0.85rem;">
-                    {center_data['goals']}G {center_data['assists']}A
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown("""
-            <div style="background-color: #f8f9fa; padding: 1rem; border-radius: 8px; border: 2px dashed #dee2e6; margin-top: 0.5rem; text-align: center; color: #6c757d;">
-                <div style="font-size: 2rem;">🎯</div>
-                <div>Select a center</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-    with col3:
-        # Field players in 2 columns within this column
-        field_col1, field_col2 = st.columns(2)
-
-        field_options = {}
-        for _, row in field_players.iterrows():
-            display_name = f"#{row['jersey']} {row['player'].replace(' (C)', '')} ({row['team_code']}) - {row['match_name']} - {row['fantasy_points']} pts"
-            field_options[display_name] = row
-
-        selected_fields = st.multiselect(
-            "Select 5 field players:",
-            options=list(field_options.keys()),
-            default=[],  # Empty default
-            max_selections=5,
-            key=f"weekly_field_{st.session_state.refresh_counter}",
-            label_visibility="collapsed"
-        )
-
-        # Display selected field players or placeholder
-        if selected_fields:
-            for i, field_name in enumerate(selected_fields):
-                field_data = field_options[field_name]
-                # Determine team color
-                if field_data['team_code'] in ['NBG', 'FTC', 'KOT']:
-                    team_color = "#0066CC"
-                elif field_data['team_code'] in ['JSP', 'BRE', 'ORA']:
-                    team_color = "#CC3333"
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("Add Team", type="primary", key="add_custom_team_btn"):
+            if custom_manager and custom_team:
+                user_id = f"custom_{custom_manager.lower().replace(' ', '_')}"
+                if league_manager.add_user(user_id, custom_manager, custom_team):
+                    st.success(f"Added {custom_manager}'s {custom_team}!")
+                    st.rerun()
                 else:
-                    team_color = "#666666"
+                    st.warning("Team already exists or error occurred")
 
-                # Alternate between two columns
-                target_col = field_col1 if i % 2 == 0 else field_col2
+# Get all teams from league_manager
+all_users = list(league_manager.users.keys())
 
-                with target_col:
-                    st.markdown(f"""
-                    <div style="background-color: white; padding: 0.8rem; border-radius: 8px; border-left: 3px solid {team_color}; margin-bottom: 0.5rem;">
-                        <div style="font-weight: bold; color: {team_color}; font-size: 0.9rem;">
-                            #{field_data['jersey']} {field_data['player'].replace(' (C)', '')}
-                        </div>
-                        <div style="color: #666; font-size: 0.8rem;">
-                            {field_data['team_code']} • {field_data['match_name']}
-                        </div>
-                        <div style="color: #2E7D32; font-weight: bold; font-size: 0.9rem;">
-                            {field_data['fantasy_points']} pts
-                        </div>
-                        <div style="color: #555; font-size: 0.75rem;">
-                            {field_data['goals']}G {field_data['assists']}A {field_data['steals']}ST {field_data['blocks']}BLK
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+# Create tabs for ALL teams
+all_tab_names = []
+user_id_mapping = {}
 
-            # Fill remaining slots with placeholders
-            for i in range(len(selected_fields), 5):
-                target_col = field_col1 if i % 2 == 0 else field_col2
-                with target_col:
-                    st.markdown(f"""
-                    <div style="background-color: #f8f9fa; padding: 0.8rem; border-radius: 8px; border: 1px dashed #dee2e6; margin-bottom: 0.5rem; text-align: center; color: #6c757d;">
-                        <div style="font-size: 1.2rem;">🏊</div>
-                        <div style="font-size: 0.7rem;">Slot {i + 1}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-        else:
-            # Show all 5 empty slots
-            for i in range(5):
-                target_col = field_col1 if i % 2 == 0 else field_col2
-                with target_col:
-                    st.markdown(f"""
-                    <div style="background-color: #f8f9fa; padding: 0.8rem; border-radius: 8px; border: 1px dashed #dee2e6; margin-bottom: 0.5rem; text-align: center; color: #6c757d;">
-                        <div style="font-size: 1.2rem;">🏊</div>
-                        <div style="font-size: 0.7rem;">Slot {i + 1}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+# Add "My Team" first
+all_tab_names.append("My Team")
+user_id_mapping["My Team"] = "current_user"
 
-    # Calculate team summary
-    has_gk = selected_gk != "-- Select Goalkeeper --" and selected_gk in gk_options and gk_options[
-        selected_gk] is not None
-    has_center = selected_center != "-- Select Center --" and selected_center in center_options and center_options[
-        selected_center] is not None
-    has_5_fields = len(selected_fields) == 5
+# Add all other teams from league_manager
+for user_id, user_data in league_manager.users.items():
+    if user_id != "current_user":  # Skip if it's the current user (handled above)
+        tab_name = user_data.get('team_name', f"Team {user_id}")
+        all_tab_names.append(tab_name)
+        user_id_mapping[tab_name] = user_id
 
-    if has_gk and has_center and has_5_fields:
-        # Get all selected player data
-        all_selected_data = []
+# Always ensure at least 4 tabs for new users
+while len(all_tab_names) < 4:
+    tab_num = len(all_tab_names) + 1
+    tab_name = f"Team {tab_num}"
+    all_tab_names.append(tab_name)
+    user_id_mapping[tab_name] = f"team_{tab_num}"
 
-        if has_gk:
-            all_selected_data.append(gk_options[selected_gk])
+# Create the tabs
+team_tabs = st.tabs(all_tab_names)
 
-        if has_center:
-            all_selected_data.append(center_options[selected_center])
+for i, tab in enumerate(team_tabs):
+    with tab:
+        tab_name = all_tab_names[i]
+        user_id = user_id_mapping.get(tab_name)
 
-        for field_name in selected_fields:
-            if field_name in field_options:
-                all_selected_data.append(field_options[field_name])
+        if user_id:
+            st.markdown(f"### 🎯 Build {tab_name}")
 
-        if len(all_selected_data) == 7:
-            # Create DataFrame from selected data
-            selected_df = pd.DataFrame([{
-                'jersey': row['jersey'],
-                'player': row['player'],
-                'team_code': row['team_code'],
-                'goals': row['goals'],
-                'assists': row['assists'],
-                'steals': row['steals'],
-                'blocks': row['blocks'],
-                'fantasy_points': row['fantasy_points'],
-                'position': row['position'],
-                'match_name': row['match_name']
-            } for row in all_selected_data])
+            # Check if user exists, create if not (for default teams)
+            if user_id not in league_manager.users and user_id.startswith("team_"):
+                league_manager.add_user(user_id, f"Manager {i}", tab_name)
 
-            total_points = selected_df['fantasy_points'].sum()
-            avg_points = total_points / 7
+            # Render team builder for this user
+            league_ui.render_team_builder(player_pool, user_id)
 
-            # DYNAMIC TEAM RATING SYSTEM - Based on actual data
-            # Get top possible team: best GK + best C + 5 best field players
-            top_gk = goalkeepers.iloc[0]['fantasy_points'] if not goalkeepers.empty else 0
-            top_center = centers.iloc[0]['fantasy_points'] if not centers.empty else 0
-            top_fields = field_players.head(5)['fantasy_points'].sum() if len(field_players) >= 5 else 0
-
-            max_possible = top_gk + top_center + top_fields
-
-            # Get worst possible team: worst GK + worst C + 5 worst field players
-            worst_gk = goalkeepers.iloc[-1]['fantasy_points'] if not goalkeepers.empty else 0
-            worst_center = centers.iloc[-1]['fantasy_points'] if not centers.empty else 0
-            worst_fields = field_players.tail(5)['fantasy_points'].sum() if len(field_players) >= 5 else 0
-            min_possible = worst_gk + worst_center + worst_fields
-
-            # Calculate percentage of possible range
-            if max_possible > min_possible:
-                team_percentage = ((total_points - min_possible) / (max_possible - min_possible)) * 100
-            else:
-                team_percentage = 50  # Default if all players have same points
-
-            # Improved rating scale
-            if team_percentage >= 90:
-                rating = "A+"
-                rating_color = "#198754"
-                rating_class = "team-rating-a"
-            elif team_percentage >= 80:
-                rating = "A"
-                rating_color = "#20c997"
-                rating_class = "team-rating-a"
-            elif team_percentage >= 70:
-                rating = "B+"
-                rating_color = "#0dcaf0"
-                rating_class = "team-rating-b"
-            elif team_percentage >= 60:
-                rating = "B"
-                rating_color = "#6f42c1"
-                rating_class = "team-rating-b"
-            elif team_percentage >= 50:
-                rating = "C+"
-                rating_color = "#fd7e14"
-                rating_class = "team-rating-c"
-            elif team_percentage >= 40:
-                rating = "C"
-                rating_color = "#ffc107"
-                rating_class = "team-rating-c"
-            elif team_percentage >= 30:
-                rating = "D+"
-                rating_color = "#dc3545"
-                rating_class = "team-rating-d"
-            else:
-                rating = "D"
-                rating_color = "#6c757d"
-                rating_class = "team-rating-d"
-
-            st.markdown("---")
-            st.markdown("### 📊 Team Summary")
-
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Fantasy Points", f"{total_points}")
-            with col2:
-                st.metric("Average per Player", f"{avg_points:.1f}")
-            with col3:
-                st.markdown(f"""
-                <div style="text-align: center;">
-                    <div class="{rating_class}" style="font-size: 1.5rem; font-weight: bold;">
-                        {rating}
-                    </div>
-                    <div style="font-size: 0.8rem; color: #666;">
-                        Team Rating
-                    </div>
-                    <div style="font-size: 0.7rem; color: #999;">
-                        Top possible: {max_possible} pts
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            # Position breakdown
-            st.markdown("#### Position Breakdown:")
-            pos_cols = st.columns(3)
-            with pos_cols[0]:
-                st.success(f"🥅 Goalkeeper: 1/1")
-            with pos_cols[1]:
-                st.success(f"🎯 Center: 1/1")
-            with pos_cols[2]:
-                st.success(f"🏊 Field Players: 5/5")
-
-            # Team analysis
-            st.markdown("#### Team Analysis:")
-            analysis_col1, analysis_col2 = st.columns(2)
-
-            with analysis_col1:
-                # Best player
-                best_player = selected_df.loc[selected_df['fantasy_points'].idxmax()]
-                st.info(
-                    f"⭐ **Top Performer:** #{best_player['jersey']} {best_player['player']} ({best_player['fantasy_points']} pts)")
-
-            with analysis_col2:
-                # Match distribution
-                match_counts = selected_df['match_name'].value_counts()
-                match_text = ", ".join([f"{count} from {match}" for match, count in match_counts.items()])
-                st.info(f"📊 **Match Selection:** {match_text}")
-
-            st.success("✅ Team composition is valid!")
-        else:
-            st.warning("⚠️ Please select all required positions")
-    else:
-        # Show what's missing
-        missing = []
-        if not has_gk:
-            missing.append("Goalkeeper")
-        if not has_center:
-            missing.append("Center")
-        if not has_5_fields:
-            missing.append(f"{5 - len(selected_fields)} more field players")
-
-        if missing:
-            st.info(f"👆 Select: {', '.join(missing)} to build your team")
-        else:
-            st.info("👆 Select 1 goalkeeper, 1 center, and 5 field players to build your team")
-
-else:
-    st.warning("No player data available for team building")
-
-# Footer with next steps
+# League Management Section
 st.markdown("---")
-st.success("""
-### ✅ **Fantasy Water Polo - Three Matches Ready!**
+st.markdown('<div class="section-header">🏆 Fantasy League Manager</div>', unsafe_allow_html=True)
 
-**Features Complete:**
-- **Three matches** (NBG vs JSP, FTC vs Brescia, KOT vs ORA) loaded
-- **Global ranking** for "All Matches" view
-- **Blocks displayed** in all player stats
-- **Sorted dropdowns** by fantasy points (highest first)
-- **Weekly team builder** mixing players from different matches
-- **Dynamic team rating** system based on actual player data
+# Create tabs for different league functions
+tab1, tab2, tab3, tab4 = st.tabs(["👥 League Setup", "📝 Manage Rosters", "⚔️ Weekly Matchups", "📊 Standings"])
 
-**Try it out:** Build a team mixing players from all three matches for maximum points!
-""")
+with tab1:
+    league_ui.render_league_setup()
+
+with tab2:
+    league_ui.render_lineup_management()
+
+with tab3:
+    week_to_view = st.number_input(
+        "View Week",
+        min_value=1,
+        max_value=20,
+        value=league_manager.matchup_manager.current_week,
+        key="matchup_week_view"
+    )
+
+    # Calculate scores button
+    if st.button("📊 Calculate Week Scores", type="primary", key="calc_scores_btn"):
+        player_points = lineup_manager.get_player_points_dict(match_data)
+        if player_points:
+            weekly_scores = league_manager.calculate_weekly_scores(week_to_view, player_points)
+            st.success(f"✅ Calculated scores for {len(weekly_scores)} teams!")
+
+    # Show matchups
+    st.markdown(f"#### Week {week_to_view} Matchups")
+    week_matchups = league_manager.get_weekly_matchups(week_to_view)
+
+    if week_matchups:
+        for matchup in week_matchups:
+            team1_data = league_manager.users.get(matchup['team1'], {})
+            team1_name = team1_data.get('team_name', 'Unknown')
+
+            if matchup.get('team2'):
+                team2_data = league_manager.users.get(matchup['team2'], {})
+                team2_name = team2_data.get('team_name', 'Unknown')
+
+                col1, col2, col3 = st.columns([2, 1, 2])
+                with col1:
+                    st.markdown(f"**{team1_name}**")
+                    st.metric("Score", matchup['team1_score'])
+                with col2:
+                    st.markdown("**VS**")
+                    if matchup.get('completed'):
+                        if matchup['team1_score'] > matchup['team2_score']:
+                            st.success("🏆")
+                        elif matchup['team2_score'] > matchup['team1_score']:
+                            st.error("🏆")
+                with col3:
+                    st.markdown(f"**{team2_name}**")
+                    st.metric("Score", matchup['team2_score'])
+            else:
+                st.markdown(f"**{team1_name}** - BYE WEEK")
+    else:
+        st.info("No matchups scheduled for this week")
+
+with tab4:
+    league_ui.render_standings()
+
+# Footer
+st.markdown("---")
+st.markdown("*Fantasy Water Polo Manager • Developed for LEN Champions League • Data updates automatically*")
+
+
+# FUNCTION for better matchup display
+def render_matchup_display_with_scores():
+    """Render matchup management with proper head-to-head display"""
+    week_to_view = st.number_input(
+        "View Week",
+        min_value=1,
+        max_value=20,
+        value=league_manager.matchup_manager.current_week,
+        key="matchup_week_view"
+    )
+
+    # Calculate scores button
+    col_calc, col_gen = st.columns(2)
+    with col_calc:
+        if st.button("📊 Calculate Week Scores", type="primary", use_container_width=True, key="calc_scores_btn"):
+            player_points = lineup_manager.get_player_points_dict(match_data)
+            if player_points:
+                weekly_scores = league_manager.calculate_weekly_scores(week_to_view, player_points)
+                st.success(f"✅ Calculated scores for {len(weekly_scores)} teams!")
+                st.rerun()
+
+    with col_gen:
+        if st.button("🔄 Generate Matchups", type="secondary", use_container_width=True, key="gen_matchups_btn"):
+            matchups = league_manager.create_weekly_matchups(week_to_view)
+            st.success(f"✅ Created {len(matchups)} matchups!")
+            st.rerun()
+
+    # Show matchups with IMPROVED DISPLAY
+    st.markdown(f"### 🏆 Week {week_to_view} Matchups")
+    week_matchups = league_manager.get_weekly_matchups(week_to_view)
+
+    if week_matchups:
+        for matchup_idx, matchup in enumerate(week_matchups):
+            team1_data = league_manager.users.get(matchup['team1'], {})
+            team1_name = team1_data.get('team_name', 'Unknown')
+            team1_manager = team1_data.get('name', 'Unknown')
+
+            if matchup.get('team2'):
+                team2_data = league_manager.users.get(matchup['team2'], {})
+                team2_name = team2_data.get('team_name', 'Unknown')
+                team2_manager = team2_data.get('name', 'Unknown')
+
+                # Get lineups for both teams
+                team1_lineup = league_manager.get_lineup(matchup['team1'], week_to_view)
+                team2_lineup = league_manager.get_lineup(matchup['team2'], week_to_view)
+
+                # Create a nice matchup card
+                with st.container():
+                    st.markdown("---")
+
+                    # Header with team names
+                    col_header = st.columns([1, 2, 2, 1])
+                    with col_header[1]:
+                        st.markdown(f"### {team1_name}")
+                        st.caption(f"Manager: {team1_manager}")
+                    with col_header[2]:
+                        st.markdown(f"### {team2_name}")
+                        st.caption(f"Manager: {team2_manager}")
+
+                    # Scores
+                    col_scores = st.columns([1, 2, 2, 1])
+                    with col_scores[1]:
+                        score_display = f"{matchup['team1_score']} pts" if matchup.get('team1_score',
+                                                                                       0) > 0 else "No score"
+                        st.metric("", score_display)
+                    with col_scores[2]:
+                        score_display = f"{matchup['team2_score']} pts" if matchup.get('team2_score',
+                                                                                       0) > 0 else "No score"
+                        st.metric("", score_display)
+
+                    # Winner indicator
+                    if matchup.get('completed') and matchup['team1_score'] != matchup['team2_score']:
+                        col_winner = st.columns([1, 2, 2, 1])
+                        winner_idx = 1 if matchup['team1_score'] > matchup['team2_score'] else 2
+                        with col_winner[winner_idx]:
+                            st.success("🏆 **WINNER**")
+
+                    # Lineup details in expanders
+                    col_details = st.columns(2)
+                    with col_details[0]:
+                        with st.expander(f"View {team1_name} Lineup", expanded=False):
+                            if team1_lineup and 'players' in team1_lineup:
+                                render_lineup_details(team1_lineup['players'])
+                            else:
+                                st.info("No lineup set")
+
+                    with col_details[1]:
+                        with st.expander(f"View {team2_name} Lineup", expanded=False):
+                            if team2_lineup and 'players' in team2_lineup:
+                                render_lineup_details(team2_lineup['players'])
+                            else:
+                                st.info("No lineup set")
+            else:
+                # Bye week
+                st.markdown("---")
+                st.markdown(f"### 🏖️ **{team1_name}** - BYE WEEK")
+                st.info(f"{team1_name} gets a bye this week")
+
+    else:
+        st.info("No matchups scheduled for this week. Use 'Generate Matchups' button above.")
+
+    # Team scores table
+    st.markdown("### 📈 Team Scores This Week")
+    weekly_scores = league_manager.matchup_manager.scores.get(week_to_view, {})
+
+    if weekly_scores:
+        scores_data = []
+        for user_id, score in weekly_scores.items():
+            user_data = league_manager.users.get(user_id, {})
+            scores_data.append({
+                'Team': user_data.get('team_name', 'Unknown'),
+                'Manager': user_data.get('name', 'Unknown'),
+                'Score': score
+            })
+
+        scores_df = pd.DataFrame(scores_data).sort_values('Score', ascending=False)
+        st.dataframe(
+            scores_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                'Team': st.column_config.TextColumn(width="medium"),
+                'Manager': st.column_config.TextColumn(width="medium"),
+                'Score': st.column_config.NumberColumn(width="small")
+            }
+        )
+    else:
+        st.info("No scores calculated yet. Click 'Calculate Week Scores' above.")
+
+
+def render_lineup_details(players):
+    """Render lineup details for a team"""
+    from App.config import TEAM_SIZE
+
+    if len(players) >= TEAM_SIZE['starters']:
+        starters = players[:TEAM_SIZE['starters']]
+        bench = players[TEAM_SIZE['starters']:]
+
+        st.markdown("**Starters:**")
+        for player in starters:
+            position_symbol = "🥅" if player.get('position') == 'goalkeeper' else "🎯" if player.get(
+                'position') == 'center' else "🏊"
+            st.write(
+                f"{position_symbol} #{player.get('jersey', '?')} {player.get('player', 'Unknown')} - {player.get('fantasy_points', 0)} pts")
+
+        if bench:
+            st.markdown("**Bench:**")
+            for player in bench:
+                position_symbol = "🥅" if player.get('position') == 'goalkeeper' else "🎯" if player.get(
+                    'position') == 'center' else "🏊"
+                st.write(f"{position_symbol} #{player.get('jersey', '?')} {player.get('player', 'Unknown')}")
+    else:
+        st.write("Incomplete lineup")
