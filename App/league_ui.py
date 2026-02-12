@@ -1,4 +1,4 @@
-# App/league_ui.py - FIXED VERSION WITH STABLE SELECTIONS
+# App/league_ui.py - COMPLETE FIXED VERSION
 import streamlit as st
 import pandas as pd
 from App.league_manager import league_manager
@@ -54,8 +54,8 @@ def render_team_builder(player_pool, user_id=None):
                     break
 
             # Find Field players
-            field_players = [p for p in starters if p.get('position') == 'field']
-            st.session_state[f'{user_id}_selected_fields'] = field_players[:5]
+            field_players_list = [p for p in starters if p.get('position') == 'field']
+            st.session_state[f'{user_id}_selected_fields'] = field_players_list[:5]
 
             # Bench players
             st.session_state[f'{user_id}_selected_bench'] = bench[:2]
@@ -78,12 +78,13 @@ def render_team_builder(player_pool, user_id=None):
     # Filter and sort players
     goalkeepers = player_pool[player_pool['position'] == 'goalkeeper']
     centers = player_pool[player_pool['position'] == 'center']
-    field_players = player_pool[player_pool['position'] == 'field']
+    field_players_df = player_pool[player_pool['position'] == 'field']
 
     # Filter out 0-point players
     goalkeepers = goalkeepers[goalkeepers['fantasy_points'] > 0].sort_values('fantasy_points', ascending=False)
     centers = centers[centers['fantasy_points'] > 0].sort_values('fantasy_points', ascending=False)
-    field_players = field_players[field_players['fantasy_points'] > 0].sort_values('fantasy_points', ascending=False)
+    field_players_df = field_players_df[field_players_df['fantasy_points'] > 0].sort_values('fantasy_points',
+                                                                                            ascending=False)
 
     # ALL players for bench
     all_players = player_pool[player_pool['fantasy_points'] > 0].sort_values('fantasy_points', ascending=False)
@@ -91,125 +92,145 @@ def render_team_builder(player_pool, user_id=None):
     # === GOALKEEPER SELECTION ===
     with col1:
         # Create GK dropdown options
-        gk_options = {}
-        gk_display_names = []
-
-        # Add default option
-        gk_options["-- Select Goalkeeper --"] = None
-        gk_display_names.append("-- Select Goalkeeper --")
+        gk_options = {"-- Select Goalkeeper --": None}
+        gk_display_names = ["-- Select Goalkeeper --"]
 
         for idx, row in goalkeepers.iterrows():
             display_name = f"#{row['jersey']} {row['player'].replace(' (C)', '')} ({row['team_code']}) - {row['match_name']} - {row['fantasy_points']} pts"
             gk_options[display_name] = row.to_dict()
             gk_display_names.append(display_name)
 
-        # Find current selection index
+        # Get current selection
         current_gk = st.session_state[f'{user_id}_selected_gk']
-        gk_default_idx = 0
+
+        # Create a stable key for the widget
+        widget_key = f"{user_id}_gk_select"
+
+        # Find default index
+        default_idx = 0
         if current_gk and isinstance(current_gk, dict):
             for i, name in enumerate(gk_display_names):
                 if name != "-- Select Goalkeeper --" and gk_options[name].get('player') == current_gk.get('player'):
-                    gk_default_idx = i
+                    default_idx = i
                     break
 
         selected_gk = st.selectbox(
             "Select goalkeeper:",
             options=gk_display_names,
-            index=gk_default_idx,
-            key=f"{user_id}_gk_select",
+            index=default_idx,
+            key=widget_key,
             label_visibility="collapsed"
         )
 
         if selected_gk != "-- Select Goalkeeper --" and selected_gk in gk_options:
             st.session_state[f'{user_id}_selected_gk'] = gk_options[selected_gk]
             st.markdown(render_selected_player(gk_options[selected_gk], 'goalkeeper'), unsafe_allow_html=True)
+        else:
+            st.session_state[f'{user_id}_selected_gk'] = None
+            st.caption("No goalkeeper selected")
 
     # === CENTER SELECTION ===
     with col2:
         # Create Center dropdown options
-        center_options = {}
-        center_display_names = []
-
-        # Add default option
-        center_options["-- Select Center --"] = None
-        center_display_names.append("-- Select Center --")
+        center_options = {"-- Select Center --": None}
+        center_display_names = ["-- Select Center --"]
 
         for idx, row in centers.iterrows():
             display_name = f"#{row['jersey']} {row['player'].replace(' (C)', '')} ({row['team_code']}) - {row['match_name']} - {row['fantasy_points']} pts"
             center_options[display_name] = row.to_dict()
             center_display_names.append(display_name)
 
-        # Find current selection index
+        # Get current selection
         current_center = st.session_state[f'{user_id}_selected_center']
-        center_default_idx = 0
+
+        # Create a stable key for the widget
+        widget_key = f"{user_id}_center_select"
+
+        # Find default index
+        default_idx = 0
         if current_center and isinstance(current_center, dict):
             for i, name in enumerate(center_display_names):
                 if name != "-- Select Center --" and center_options[name].get('player') == current_center.get('player'):
-                    center_default_idx = i
+                    default_idx = i
                     break
 
         selected_center = st.selectbox(
             "Select center:",
             options=center_display_names,
-            index=center_default_idx,
-            key=f"{user_id}_center_select",
+            index=default_idx,
+            key=widget_key,
             label_visibility="collapsed"
         )
 
         if selected_center != "-- Select Center --" and selected_center in center_options:
             st.session_state[f'{user_id}_selected_center'] = center_options[selected_center]
             st.markdown(render_selected_player(center_options[selected_center], 'center'), unsafe_allow_html=True)
+        else:
+            st.session_state[f'{user_id}_selected_center'] = None
+            st.caption("No center selected")
 
-    # === FIELD PLAYERS SELECTION - FIXED ===
+    # === FIELD PLAYERS SELECTION ===
     with col3:
-        # Create field player options
-        field_options = {}
-        field_display_names = []
+        st.markdown("**Field Players (5)**")
 
-        for idx, row in field_players.iterrows():
+        # Create field player options
+        field_options = {"-- Select Field Player --": None}
+        field_display_names = ["-- Select Field Player --"]
+
+        for idx, row in field_players_df.iterrows():
             display_name = f"#{row['jersey']} {row['player'].replace(' (C)', '')} ({row['team_code']}) - {row['match_name']} - {row['fantasy_points']} pts"
             field_options[display_name] = row.to_dict()
             field_display_names.append(display_name)
 
-        # Get current selections as display names
-        current_selections = []
-        if st.session_state[f'{user_id}_selected_fields']:
-            for player in st.session_state[f'{user_id}_selected_fields']:
-                if isinstance(player, dict):
-                    for display_name, player_data in field_options.items():
-                        if player.get('player') == player_data.get('player'):
-                            current_selections.append(display_name)
-                            break
+        # Initialize field player selections if needed
+        if f'{user_id}_field_1' not in st.session_state:
+            for i in range(1, 6):
+                st.session_state[f'{user_id}_field_{i}'] = "-- Select Field Player --"
 
-        # IMPORTANT: Use a unique key for the widget
-        selected_fields = st.multiselect(
-            "Select 5 field players:",
-            options=field_display_names,
-            default=current_selections,
-            max_selections=5,
-            key=f"{user_id}_field_select_{len(current_selections)}",  # Unique key based on count
-            label_visibility="collapsed"
-        )
+        # Create 5 individual selectboxes
+        selected_field_players = []
+        for i in range(1, 6):
+            # Get current selection for this slot
+            current_value = st.session_state[f'{user_id}_field_{i}']
 
-        # Update session state
-        new_selected = [field_options[name] for name in selected_fields if name in field_options]
-        st.session_state[f'{user_id}_selected_fields'] = new_selected
+            # Find default index
+            if current_value in field_display_names:
+                default_idx = field_display_names.index(current_value)
+            else:
+                default_idx = 0
+                st.session_state[f'{user_id}_field_{i}'] = "-- Select Field Player --"
 
-        # Display selected field players
-        if st.session_state[f'{user_id}_selected_fields']:
-            st.markdown("**Selected:**")
-            for player in st.session_state[f'{user_id}_selected_fields']:
-                st.markdown(render_selected_player(player, 'field'), unsafe_allow_html=True)
-        else:
-            st.caption("No field players selected")
+            # Create selectbox with stable key
+            selected = st.selectbox(
+                f"Field Player {i}",
+                options=field_display_names,
+                index=default_idx,
+                key=f"{user_id}_field_select_{i}",
+                label_visibility="collapsed"
+            )
 
-        st.caption(f"Selected: {len(selected_fields)}/5")
+            # Store in session state
+            st.session_state[f'{user_id}_field_{i}'] = selected
 
-    # === BENCH SELECTION - FIXED ===
+            # Add to selected players list
+            if selected != "-- Select Field Player --" and selected in field_options:
+                selected_field_players.append(field_options[selected])
+                # Show player card
+                st.markdown(render_selected_player(field_options[selected], 'field'), unsafe_allow_html=True)
+            else:
+                st.caption(f"Slot {i}: Empty")
+
+        # Update session state with all selected field players
+        st.session_state[f'{user_id}_selected_fields'] = selected_field_players
+        st.caption(f"Selected: {len(selected_field_players)}/5")
+
+    # === BENCH SELECTION ===
     with col4:
+        st.markdown("**Bench (2)**")
+
         # Create bench options
-        bench_options = {}
-        bench_display_names = []
+        bench_options = {"-- Select Bench Player --": None}
+        bench_display_names = ["-- Select Bench Player --"]
 
         for idx, row in all_players.iterrows():
             position_symbol = "🥅" if row['position'] == 'goalkeeper' else "🎯" if row['position'] == 'center' else "🏊"
@@ -217,55 +238,50 @@ def render_team_builder(player_pool, user_id=None):
             bench_options[display_name] = row.to_dict()
             bench_display_names.append(display_name)
 
-        # Get current bench selections as display names
-        current_bench_selections = []
-        if st.session_state[f'{user_id}_selected_bench']:
-            for player in st.session_state[f'{user_id}_selected_bench']:
-                if isinstance(player, dict):
-                    for display_name, player_data in bench_options.items():
-                        if player.get('player') == player_data.get('player'):
-                            current_bench_selections.append(display_name)
-                            break
+        # Initialize bench selections
+        if f'{user_id}_bench_1' not in st.session_state:
+            st.session_state[f'{user_id}_bench_1'] = "-- Select Bench Player --"
+            st.session_state[f'{user_id}_bench_2'] = "-- Select Bench Player --"
 
-        # IMPORTANT: Use a unique key for the widget
-        selected_bench = st.multiselect(
-            "Select 2 bench players:",
-            options=bench_display_names,
-            default=current_bench_selections,
-            max_selections=2,
-            key=f"{user_id}_bench_select_{len(current_bench_selections)}",  # Unique key based on count
-            label_visibility="collapsed"
-        )
+        # Create 2 individual selectboxes for bench
+        selected_bench_players = []
+        for i in range(1, 3):
+            current_value = st.session_state[f'{user_id}_bench_{i}']
+
+            if current_value in bench_display_names:
+                default_idx = bench_display_names.index(current_value)
+            else:
+                default_idx = 0
+                st.session_state[f'{user_id}_bench_{i}'] = "-- Select Bench Player --"
+
+            selected = st.selectbox(
+                f"Bench {i}",
+                options=bench_display_names,
+                index=default_idx,
+                key=f"{user_id}_bench_select_{i}",
+                label_visibility="collapsed"
+            )
+
+            st.session_state[f'{user_id}_bench_{i}'] = selected
+
+            if selected != "-- Select Bench Player --" and selected in bench_options:
+                selected_bench_players.append(bench_options[selected])
+                # Show player card
+                position_type = bench_options[selected].get('position', 'field')
+                st.markdown(render_selected_player(bench_options[selected], position_type), unsafe_allow_html=True)
+            else:
+                st.caption(f"Bench {i}: Empty")
 
         # Update session state
-        new_bench_selected = [bench_options[name] for name in selected_bench if name in bench_options]
-        st.session_state[f'{user_id}_selected_bench'] = new_bench_selected
-
-        # Display selected bench players using render_selected_player
-        if st.session_state[f'{user_id}_selected_bench']:
-            st.markdown("**Selected Bench:**")
-            for player in st.session_state[f'{user_id}_selected_bench']:
-                # Determine position type for display
-                position_type = player.get('position', 'field')
-                st.markdown(render_selected_player(player, position_type), unsafe_allow_html=True)
-        else:
-            st.caption("No bench players selected")
-
-        st.caption(f"Bench: {len(selected_bench)}/2")
+        st.session_state[f'{user_id}_selected_bench'] = selected_bench_players
+        st.caption(f"Bench: {len(selected_bench_players)}/2")
 
     # Save Roster Button
     st.markdown("---")
-    col_save, col_reset = st.columns([3, 1])
 
-    with col_save:
-        if st.button("💾 Save Full Roster (Starters + Bench)", type="primary", use_container_width=True,
-                     key=f"{user_id}_save"):
-            save_current_roster(user_id)
-
-    with col_reset:
-        if st.button("🔄 Clear Selections", type="secondary", use_container_width=True, key=f"{user_id}_clear"):
-            clear_selections(user_id)
-            st.rerun()
+    if st.button("💾 Save Full Roster (Starters + Bench)", type="primary", use_container_width=True,
+                 key=f"{user_id}_save"):
+        save_current_roster(user_id)
 
 
 def save_current_roster(user_id="current_user"):
@@ -377,20 +393,6 @@ def save_current_roster(user_id="current_user"):
         st.write(f"**Debug:** Found {len(roster_players)} players (need {TEAM_SIZE['total']})")
 
 
-def clear_selections(user_id="current_user"):
-    """Clear all selections for a user"""
-    keys_to_clear = [
-        f'{user_id}_selected_gk',
-        f'{user_id}_selected_center',
-        f'{user_id}_selected_fields',
-        f'{user_id}_selected_bench'
-    ]
-
-    for key in keys_to_clear:
-        if key in st.session_state:
-            del st.session_state[key]
-
-
 def render_league_setup():
     """Render league setup UI"""
     col1, col2 = st.columns(2)
@@ -458,13 +460,15 @@ def render_league_setup():
 
 
 def render_lineup_management():
-    """Render lineup management UI"""
+    """Render lineup management UI (View Only)"""
     if not league_manager.users:
         st.warning("⚠️ No managers in the league. Add managers first.")
         return
 
+    st.info("👁️ **View Only** - You can see other managers' rosters but cannot edit them.")
+
     # Show all users with their lineups
-    st.markdown("#### 📋 All Managers' Rosters")
+    st.markdown("#### 📋 League Rosters")
 
     for user_id, user_data in league_manager.users.items():
         with st.expander(f"{user_data['name']} - {user_data['team_name']}"):
@@ -534,13 +538,12 @@ def render_lineup_management():
                 st.info(f"No roster set for Week {week_to_view}")
 
     st.markdown("---")
-    st.markdown("#### 💡 How to Save Your Roster")
+    st.markdown("#### 💡 How to Set Your Roster")
     st.info("""
-    1. Build your team using the **Team Builder** tabs
+    1. Go to **Team Builder** tab
     2. Select: 1 Goalkeeper 🥅, 1 Center 🎯, 5 Field Players 🏊 (Starters)
     3. Select: 2 Bench Players 🪑 (any position)
-    4. Click the **"💾 Save Full Roster (Starters + Bench)"** button
-    5. Your roster will be saved for the current week
+    4. Click **"Save Full Roster"**
     """)
 
 
@@ -554,6 +557,8 @@ def render_matchup_management(match_data):
         st.write(f"Current Week: {week_to_view}")
         st.write(f"Total Users: {len(league_manager.users)}")
         st.write(f"Users: {list(league_manager.users.keys())}")
+        st.write(f"Scores: {league_manager.matchup_manager.scores}")
+        st.write(f"Matchups: {league_manager.matchup_manager.matchups}")
 
         # Check lineups
         lineups = league_manager.get_all_lineups(week_to_view)
@@ -573,17 +578,12 @@ def render_matchup_management(match_data):
         if player_points:
             weekly_scores = league_manager.calculate_weekly_scores(week_to_view, player_points)
             st.success(f"✅ Calculated scores for {len(weekly_scores)} teams!")
-
-            # Show the actual scores
-            with st.expander("📊 View Calculated Scores"):
-                for user_id, score in weekly_scores.items():
-                    user_data = league_manager.users.get(user_id, {})
-                    st.write(f"{user_data.get('team_name', user_id)}: {score} points")
+            st.rerun()
         else:
             st.error("No player points data available!")
 
     # Show matchups
-    st.markdown(f"#### Week {week_to_view} Results")
+    st.markdown(f"#### Week {week_to_view} Matchups")
     week_matchups = league_manager.get_weekly_matchups(week_to_view)
 
     if week_matchups:
@@ -598,7 +598,6 @@ def render_matchup_management(match_data):
                 col1, col2, col3 = st.columns([2, 1, 2])
                 with col1:
                     st.markdown(f"**{team1_name}**")
-                    # Show actual score or 0
                     score1 = matchup.get('team1_score', 0)
                     st.metric("Score", score1)
                 with col2:
@@ -615,74 +614,83 @@ def render_matchup_management(match_data):
             else:
                 st.markdown(f"**{team1_name}** - BYE WEEK")
     else:
-        st.info("No matchups scheduled")
+        st.info("No matchups scheduled for this week")
+
 
 def render_standings():
     """Render standings UI"""
     standings = league_manager.get_standings()
 
-    # DEBUG: Show what standings returns
-    with st.expander("🔧 Standings Debug", expanded=False):
-        st.write(f"Standings data type: {type(standings)}")
-        if standings:
-            st.write(f"Number of teams in standings: {len(standings)}")
-            for i, team in enumerate(standings):
-                st.write(f"Team {i + 1}: {team.get('team_name', 'Unknown')} - {team.get('total_points', 0)} pts")
-        else:
-            st.write("No standings data returned")
+    # If no standings, show sample data for development
+    if not standings or len(standings) == 0:
+        st.info("📊 No standings data yet. Calculate scores first!")
 
-    if standings:
-        standings_data = []
-        for i, team in enumerate(standings, 1):
-            standings_data.append({
-                'Rank': i,
-                'Team': team['team_name'],
-                'Manager': team['name'],
-                'W': team['wins'],
-                'L': team['losses'],
-                'PCT': f"{team['win_pct']:.3f}",
-                'Total Pts': team['total_points']
-            })
+        # Show sample data for development
+        with st.expander("🧪 Preview (Development Mode)", expanded=True):
+            sample_data = []
+            for i, (user_id, user_data) in enumerate(league_manager.users.items(), 1):
+                sample_data.append({
+                    'Rank': i,
+                    'Team': user_data.get('team_name', 'Unknown'),
+                    'Manager': user_data.get('name', 'Unknown'),
+                    'W': 0,
+                    'L': 0,
+                    'PCT': '.000',
+                    'Total Pts': 0
+                })
 
-        standings_df = pd.DataFrame(standings_data)
+            if sample_data:
+                st.dataframe(pd.DataFrame(sample_data), use_container_width=True, hide_index=True)
 
-        # Format the display
-        st.markdown("### 🏆 League Standings")
-        st.dataframe(
-            standings_df,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                'Rank': st.column_config.NumberColumn(width="small"),
-                'Team': st.column_config.TextColumn(width="medium"),
-                'Manager': st.column_config.TextColumn(width="medium"),
-                'W': st.column_config.NumberColumn(width="small"),
-                'L': st.column_config.NumberColumn(width="small"),
-                'PCT': st.column_config.TextColumn(width="small"),
-                'Total Pts': st.column_config.NumberColumn(width="small")
-            }
-        )
+        st.markdown("### 📋 How to Generate Standings")
+        st.info("""
+        1. **Set Lineups** for all teams in Team Builder
+        2. **Create Matchups** in League Setup
+        3. **Calculate Scores** in Weekly Matchups
+        4. Standings will appear here automatically
+        """)
+        return
 
-        # Also show as metrics
+    # Regular standings display
+    standings_data = []
+    for i, team in enumerate(standings, 1):
+        standings_data.append({
+            'Rank': i,
+            'Team': team['team_name'],
+            'Manager': team['name'],
+            'W': team['wins'],
+            'L': team['losses'],
+            'PCT': f"{team['win_pct']:.3f}",
+            'Total Pts': team['total_points']
+        })
+
+    standings_df = pd.DataFrame(standings_data)
+
+    st.markdown("### 🏆 League Standings")
+    st.dataframe(
+        standings_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            'Rank': st.column_config.NumberColumn(width="small"),
+            'Team': st.column_config.TextColumn(width="medium"),
+            'Manager': st.column_config.TextColumn(width="medium"),
+            'W': st.column_config.NumberColumn(width="small"),
+            'L': st.column_config.NumberColumn(width="small"),
+            'PCT': st.column_config.TextColumn(width="small"),
+            'Total Pts': st.column_config.NumberColumn(width="small")
+        }
+    )
+
+    # Show top teamsa
+    if len(standings) >= 1:
         st.markdown("### 🥇 Top Teams")
         col1, col2, col3 = st.columns(3)
-        if len(standings) >= 1:
-            with col1:
-                st.metric("1st Place", standings[0]['team_name'], f"{standings[0]['total_points']} pts")
+        with col1:
+            st.metric("1st Place", standings[0]['team_name'], f"{standings[0]['total_points']} pts")
         if len(standings) >= 2:
             with col2:
                 st.metric("2nd Place", standings[1]['team_name'], f"{standings[1]['total_points']} pts")
         if len(standings) >= 3:
             with col3:
                 st.metric("3rd Place", standings[2]['team_name'], f"{standings[2]['total_points']} pts")
-    else:
-        st.info("No standings data yet. Calculate scores first!")
-
-        # Show how to get standings
-        st.markdown("### 📋 How to Generate Standings")
-        st.info("""
-        1. **Build Teams**: Create rosters for each team in the Team Builder tabs
-        2. **Set Matchups**: Go to League Setup → Create Weekly Matchups
-        3. **Calculate Scores**: Go to Weekly Matchups → Calculate Week Scores
-        4. **View Standings**: Return here to see the updated standings
-        """)
