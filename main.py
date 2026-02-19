@@ -1,4 +1,4 @@
-# main.py - Fantasy Water Polo Multi-Page App
+# main.py - Fantasy Water Polo Multi-Page App - FIXED VERSION
 import streamlit as st
 import pandas as pd
 import time
@@ -8,10 +8,146 @@ from App.lineup_manager import lineup_manager
 from App.ui_components import render_player_card, render_selected_player
 from App.config import CSS_STYLES, AVAILABLE_MATCHES, SCORING_RULES, TEAM_SIZE
 from App import league_ui
+from App.matchup_page import render_matchup_page
 
 # Page config must be first
 st.set_page_config(page_title="Fantasy Water Polo", page_icon="🏊", layout="wide")
-st.markdown(CSS_STYLES, unsafe_allow_html=True)
+
+# IMPROVED CSS - Mobile friendly and better text visibility
+IMPROVED_CSS = """
+<style>
+    /* Main containers */
+    .main-header {
+        color: #0066CC !important;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+
+    .section-header {
+        background: linear-gradient(135deg, #0066CC 0%, #004C99 100%);
+        color: white !important;
+        padding: 1rem;
+        border-radius: 8px;
+        margin: 1.5rem 0 1rem 0;
+        font-weight: bold;
+        font-size: 1.2rem;
+    }
+
+    .section-header * {
+        color: white !important;
+    }
+
+    /* Player cards */
+    .player-card {
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 0.5rem 0;
+        transition: all 0.3s ease;
+    }
+
+    .player-card:hover {
+        border-color: #0066CC;
+        box-shadow: 0 4px 12px rgba(0,102,204,0.2);
+    }
+
+    .player-card * {
+        color: #1a1a1a !important;
+    }
+
+    /* Matchup scoreboard */
+    .matchup-scoreboard {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .score-display {
+        font-size: 3.5rem;
+        font-weight: bold;
+        margin: 1rem 0;
+    }
+
+    .winner-score {
+        color: #2E7D32 !important;
+    }
+
+    .loser-score {
+        color: #666 !important;
+    }
+
+    /* Position headers */
+    .position-header {
+        background-color: #f0f2f6;
+        padding: 0.8rem;
+        border-radius: 6px;
+        margin: 1.5rem 0 0.8rem 0;
+        font-weight: bold;
+        font-size: 1.1rem;
+    }
+
+    .position-header * {
+        color: #1a1a1a !important;
+    }
+
+    /* Player comparison rows */
+    .player-comparison {
+        background: white;
+        padding: 1rem;
+        border-radius: 8px;
+        margin: 0.5rem 0;
+        border-left: 4px solid #0066CC;
+    }
+
+    .player-comparison.winning {
+        background: #e8f5e9;
+        border-left-color: #2E7D32;
+    }
+
+    .player-comparison.losing {
+        background: #fff3e0;
+    }
+
+    /* Metrics */
+    .stMetric label, .stMetric div {
+        color: #1a1a1a !important;
+    }
+
+    /* Buttons */
+    .stButton > button {
+        width: 100%;
+    }
+
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+        .score-display {
+            font-size: 2.5rem;
+        }
+
+        .matchup-scoreboard {
+            padding: 1rem;
+        }
+
+        .player-card {
+            padding: 0.8rem;
+        }
+    }
+
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        padding: 0.5rem 1rem;
+    }
+</style>
+"""
+
+st.markdown(IMPROVED_CSS, unsafe_allow_html=True)
 
 # Cache version
 CACHE_VERSION = int(time.time())
@@ -196,16 +332,23 @@ def league_page():
         league_ui.render_lineup_management()
 
     with league_tabs[2]:
-        match_data = load_match_data("all", st.session_state.refresh_counter)
         week_to_view = st.number_input("View Week", min_value=1, max_value=20,
                                        value=league_manager.matchup_manager.current_week,
                                        key="matchup_week_view")
 
-        if st.button("📊 Calculate Week Scores", type="primary", key="calc_scores_btn"):
-            player_points = lineup_manager.get_player_points_dict(match_data)
-            if player_points:
-                weekly_scores = league_manager.calculate_weekly_scores(week_to_view, player_points)
-                st.success(f"✅ Calculated scores for {len(weekly_scores)} teams!")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("📊 Calculate Week Scores", type="primary", use_container_width=True):
+                # Use the centralized scoring method
+                scores = league_manager.calculate_weekly_scores(week_to_view)
+                st.success(f"✅ Calculated scores for {len(scores)} teams!")
+                st.rerun()
+
+        with col2:
+            if st.button("🔄 Generate Matchups", type="secondary", use_container_width=True):
+                matchups = league_manager.create_weekly_matchups(week_to_view)
+                st.success(f"✅ Created {len(matchups)} matchups!")
+                st.rerun()
 
         st.markdown(f"#### Week {week_to_view} Matchups")
         week_matchups = league_manager.get_weekly_matchups(week_to_view)
@@ -235,292 +378,40 @@ def league_page():
                         st.metric("Score", matchup.get('team2_score', 0))
                 else:
                     st.markdown(f"**{team1_name}** - BYE WEEK")
+                st.markdown("---")
         else:
             st.info("No matchups scheduled for this week")
 
     with league_tabs[3]:
-        league_ui.render_standings()
+        standings = league_manager.get_standings()
 
+        if standings:
+            standings_data = []
+            for i, team in enumerate(standings, 1):
+                standings_data.append({
+                    'Rank': i,
+                    'Team': team['team_name'],
+                    'Manager': team['name'],
+                    'W': team['wins'],
+                    'L': team['losses'],
+                    'PCT': f"{team['win_pct']:.3f}",
+                    'Total Pts': team['total_points']
+                })
 
-def matches_page():
-    """Match Analysis Page (Redirect to Home - kept for navigation)"""
-    st.markdown("Redirecting to Home...")
-    st.session_state.page = "Home"
-    st.rerun()
+            st.markdown("### 🏆 League Standings")
+            st.dataframe(pd.DataFrame(standings_data), use_container_width=True, hide_index=True)
 
-
-def matchup_page():
-    """My Fantasy Matchup - This Week's Head-to-Head"""
-
-    # Add CSS fix for text color
-    st.markdown("""
-    <style>
-        .player-card, div[data-testid="stVerticalBlock"] div {
-            color: #000000 !important;
-        }
-        .player-card div, .player-card span {
-            color: #000000 !important;
-        }
-        .stMetric label, .stMetric div {
-            color: #000000 !important;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-
-    st.markdown('<h1 class="main-header">⚔️ My Matchup</h1>', unsafe_allow_html=True)
-
-    current_week = league_manager.matchup_manager.current_week
-    st.markdown(f"### Week {current_week}")
-
-    # Find current user's matchup for this week
-    my_user_id = "current_user"
-    my_matchup = None
-    opponent_id = None
-
-    week_matchups = league_manager.get_weekly_matchups(current_week)
-    if week_matchups:
-        for matchup in week_matchups:
-            if matchup['team1'] == my_user_id:
-                my_matchup = matchup
-                opponent_id = matchup['team2']
-                break
-            elif matchup['team2'] == my_user_id:
-                my_matchup = matchup
-                opponent_id = matchup['team1']
-                break
-
-    if not my_matchup or not opponent_id:
-        st.warning("⚠️ No matchup scheduled for your team this week.")
-        st.info("Go to League Manager → League Setup → Create Weekly Matchups to generate matchups.")
-
-        # Show all teams for debugging/development
-        with st.expander("🔧 Dev Tools - Create Test Matchup", expanded=True):
-            st.markdown("**Available Teams:**")
-            team_options = {}
-            for uid, user_data in league_manager.users.items():
-                if uid != my_user_id:
-                    team_options[user_data.get('team_name', uid)] = uid
-
-            if team_options:
-                selected_opponent = st.selectbox("Select opponent for test matchup:",
-                                                 options=list(team_options.keys()))
-                if st.button("⚔️ Create Test Matchup", type="primary"):
-                    opponent_id = team_options[selected_opponent]
-                    # Create a simple matchup
-                    test_matchup = {
-                        'week': current_week,
-                        'team1': my_user_id,
-                        'team2': opponent_id,
-                        'team1_score': 0,
-                        'team2_score': 0,
-                        'completed': False
-                    }
-                    # Remove any existing matchups for this week
-                    league_manager.matchup_manager.matchups = [
-                        m for m in league_manager.matchup_manager.matchups
-                        if m['week'] != current_week
-                    ]
-                    league_manager.matchup_manager.matchups.append(test_matchup)
-                    league_manager.save_to_session()
-                    st.success(f"Created test matchup: My Team vs {selected_opponent}")
-                    st.rerun()
-            else:
-                st.info("No other teams available. Create teams in Team Builder first.")
-        return
-
-    # Get team data
-    my_team_data = league_manager.users.get(my_user_id, {})
-    my_team_name = my_team_data.get('team_name', 'My Team')
-    opponent_data = league_manager.users.get(opponent_id, {})
-    opponent_name = opponent_data.get('team_name', 'Unknown')
-
-    # Get lineups
-    my_lineup = league_manager.get_lineup(my_user_id, current_week)
-    opponent_lineup = league_manager.get_lineup(opponent_id, current_week)
-
-    # Calculate scores
-    my_score = my_matchup.get('team1_score' if my_matchup['team1'] == my_user_id else 'team2_score', 0)
-    opponent_score = my_matchup.get('team2_score' if my_matchup['team1'] == my_user_id else 'team1_score', 0)
-
-    # HEADER - Scoreboard
-    col1, col2, col3 = st.columns([2, 1, 2])
-
-    with col1:
-        score_color = "#2E7D32" if my_score > opponent_score else "#333"
-        winner_badge = "🏆 " if my_score > opponent_score else ""
-        st.markdown(f"""
-        <div style="background: white; padding: 2rem; border-radius: 12px; border: 2px solid #0066CC; text-align: center;">
-            <span style="font-size: 2.5rem;">👤</span>
-            <h2 style="margin: 0.5rem 0; color: #0066CC;">{winner_badge}{my_team_name}</h2>
-            <div style="font-size: 3rem; font-weight: bold; color: {score_color};">{my_score}</div>
-            <div style="color: #666;">Current Score</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col2:
-        st.markdown("""
-        <div style="display: flex; justify-content: center; align-items: center; height: 100%;">
-            <span style="font-size: 2rem; font-weight: bold; color: #666;">VS</span>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col3:
-        score_color = "#CC3333" if opponent_score > my_score else "#333"
-        winner_badge = "🏆 " if opponent_score > my_score else ""
-        st.markdown(f"""
-        <div style="background: white; padding: 2rem; border-radius: 12px; border: 1px solid #e0e0e0; text-align: center;">
-            <span style="font-size: 2.5rem;">🏊</span>
-            <h2 style="margin: 0.5rem 0;">{winner_badge}{opponent_name}</h2>
-            <div style="font-size: 3rem; font-weight: bold; color: {score_color};">{opponent_score}</div>
-            <div style="color: #666;">Current Score</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("---")
-
-    # ROSTER COMPARISON
-    st.markdown("### 📋 Starting Lineups")
-
-    if not my_lineup or 'players' not in my_lineup:
-        st.warning("⚠️ You haven't set your lineup yet. Go to Team Builder to set your roster.")
-    else:
-        my_players = my_lineup['players'][:TEAM_SIZE['starters']]  # Starters only
-        opponent_players = opponent_lineup['players'][
-            :TEAM_SIZE['starters']] if opponent_lineup and 'players' in opponent_lineup else []
-
-        # Position order
-        position_order = {'goalkeeper': 0, 'center': 1, 'field': 2}
-
-        # Sort both lineups by position
-        my_players.sort(key=lambda x: position_order.get(x.get('position', 'field'), 3))
-        opponent_players.sort(key=lambda x: position_order.get(x.get('position', 'field'), 3))
-
-        # Create position headers
-        st.markdown("""
-        <style>
-            .position-header {
-                background-color: #f0f2f6;
-                padding: 0.5rem;
-                border-radius: 4px;
-                margin: 1rem 0 0.5rem 0;
-                font-weight: bold;
-                color: black !important;
-            }
-            .player-row {
-                display: flex;
-                justify-content: space-between;
-                padding: 0.5rem;
-                border-bottom: 1px solid #e0e0e0;
-            }
-        </style>
-        """, unsafe_allow_html=True)
-
-        # Track which positions we've shown
-        shown_positions = set()
-
-        # Show all players in position order
-        for i in range(max(len(my_players), len(opponent_players))):
-            my_player = my_players[i] if i < len(my_players) else None
-            opp_player = opponent_players[i] if i < len(opponent_players) else None
-
-            # Get position for header
-            current_pos = None
-            if my_player:
-                current_pos = my_player.get('position')
-            elif opp_player:
-                current_pos = opp_player.get('position')
-
-            # Show position header if not shown yet
-            if current_pos and current_pos not in shown_positions:
-                position_emoji = "🥅" if current_pos == 'goalkeeper' else "🎯" if current_pos == 'center' else "🏊"
-                position_name = "Goalkeeper" if current_pos == 'goalkeeper' else "Center" if current_pos == 'center' else "Field Player"
-                st.markdown(f"<div class='position-header'>{position_emoji} {position_name}</div>",
-                            unsafe_allow_html=True)
-                shown_positions.add(current_pos)
-
-            # Create side-by-side comparison
-            col_left, col_mid, col_right = st.columns([2.4, 0.2, 2.4])
-
-            with col_left:
-                if my_player:
-                    st.markdown(f"""
-                    <div style="background: {'#e8f5e9' if my_player.get('fantasy_points', 0) > (opp_player.get('fantasy_points', 0) if opp_player else 0) else 'white'}; 
-                                padding: 0.8rem; border-radius: 8px; border-left: 4px solid #0066CC;">
-                        <div style="font-weight: bold; color: black;">#{my_player.get('jersey', '?')} {my_player.get('player', 'Unknown')}</div>
-                        <div style="color: #666; font-size: 0.9rem;">{my_player.get('team_code', '?')}</div>
-                        <div style="color: #2E7D32; font-weight: bold; font-size: 1.2rem;">{my_player.get('fantasy_points', 0)} pts</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.markdown("<div style='padding: 0.8rem; color: #999; text-align: center;'>— Empty —</div>",
-                                unsafe_allow_html=True)
-
-            with col_mid:
-                st.markdown(
-                    "<div style='height: 100%; display: flex; align-items: center; justify-content: center; color: black;'>⚔️</div>",
-                    unsafe_allow_html=True)
-
-            with col_right:
-                if opp_player:
-                    st.markdown(f"""
-                    <div style="background: {'#ffebee' if opp_player.get('fantasy_points', 0) > (my_player.get('fantasy_points', 0) if my_player else 0) else 'white'}; 
-                                padding: 0.8rem; border-radius: 8px; border-left: 4px solid #CC3333;">
-                        <div style="font-weight: bold; color: black;">#{opp_player.get('jersey', '?')} {opp_player.get('player', 'Unknown')}</div>
-                        <div style="color: #666; font-size: 0.9rem;">{opp_player.get('team_code', '?')}</div>
-                        <div style="color: #CC3333; font-weight: bold; font-size: 1.2rem;">{opp_player.get('fantasy_points', 0)} pts</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.markdown("<div style='padding: 0.8rem; color: #999; text-align: center;'>— Empty —</div>",
-                                unsafe_allow_html=True)
-
-    # BENCH SECTION
-    st.markdown("---")
-    st.markdown("### 🪑 Bench")
-
-    col_left, col_right = st.columns(2)
-
-    with col_left:
-        st.markdown(f"**{my_team_name}**")
-        if my_lineup and 'players' in my_lineup and len(my_lineup['players']) > TEAM_SIZE['starters']:
-            bench_players = my_lineup['players'][TEAM_SIZE['starters']:]
-            for player in bench_players:
-                pos_symbol = "🥅" if player.get('position') == 'goalkeeper' else "🎯" if player.get(
-                    'position') == 'center' else "🏊"
-                st.markdown(f"""
-                <div style="padding: 0.5rem; border-bottom: 1px solid #e0e0e0; color: black;">
-                    {pos_symbol} #{player.get('jersey', '?')} {player.get('player', 'Unknown')} - {player.get('team_code', '?')}
-                    <span style="float: right; color: #666;">{player.get('fantasy_points', 0)} pts</span>
-                </div>
-                """, unsafe_allow_html=True)
+            # Top teams
+            if len(standings) >= 1:
+                st.markdown("### 🥇 Top Teams")
+                cols = st.columns(3)
+                for i, col in enumerate(cols):
+                    if i < len(standings):
+                        with col:
+                            st.metric(f"{i + 1}st Place", standings[i]['team_name'],
+                                      f"{standings[i]['total_points']} pts")
         else:
-            st.info("No bench players")
-
-    with col_right:
-        st.markdown(f"**{opponent_name}**")
-        if opponent_lineup and 'players' in opponent_lineup and len(opponent_lineup['players']) > TEAM_SIZE['starters']:
-            bench_players = opponent_lineup['players'][TEAM_SIZE['starters']:]
-            for player in bench_players:
-                pos_symbol = "🥅" if player.get('position') == 'goalkeeper' else "🎯" if player.get(
-                    'position') == 'center' else "🏊"
-                st.markdown(f"""
-                <div style="padding: 0.5rem; border-bottom: 1px solid #e0e0e0; color: black;">
-                    {pos_symbol} #{player.get('jersey', '?')} {player.get('player', 'Unknown')} - {player.get('team_code', '?')}
-                    <span style="float: right; color: #666;">{player.get('fantasy_points', 0)} pts</span>
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.info("No bench players")
-
-    # Calculate Scores Button
-    st.markdown("---")
-    if st.button("📊 Refresh Scores", type="primary", use_container_width=True):
-        match_data = load_match_data("all", st.session_state.refresh_counter)
-        player_points = lineup_manager.get_player_points_dict(match_data)
-        if player_points:
-            weekly_scores = league_manager.calculate_weekly_scores(current_week, player_points)
-            st.success("✅ Scores updated!")
-            st.rerun()
+            st.info("No standings data yet. Calculate scores first!")
 
 
 def settings_page():
@@ -566,7 +457,7 @@ with st.sidebar:
     st.markdown("""
     <div style="text-align: center; margin-bottom: 2rem;">
         <span style="font-size: 3rem;">🏊</span>
-        <h2 style="margin-top: 0; color: #0066CC;">Fantasy<br>Water Polo</h2>
+        <h2 style="margin-top: 0; color: #0066CC !important;">Fantasy<br>Water Polo</h2>
     </div>
     """, unsafe_allow_html=True)
 
@@ -596,7 +487,7 @@ with st.sidebar:
 pages = {
     "Home": home_page,
     "Roster": roster_page,
-    "Matchup": matchup_page,
+    "Matchup": lambda: render_matchup_page(load_match_data),
     "League": league_page,
     "Settings": settings_page
 }
